@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2015, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import json
 from functools import partial
@@ -108,7 +108,7 @@ class Context(object):
 
     def check_for_write_access(self, request_data):
         if not request_data.username:
-            if request_data.is_local_connection and self.opts.local_write:
+            if request_data.is_trusted_ip:
                 return
             raise HTTPForbidden('Anonymous users are not allowed to make changes')
         if self.user_manager.is_readonly(request_data.username):

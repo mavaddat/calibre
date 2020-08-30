@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 # License: GPLv3 Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import unicode_literals
+
 
 # Contains various tweaks that affect calibre behavior. Only edit this file if
 # you know what you are doing. If you delete this file, it will be recreated from
@@ -53,7 +53,7 @@ authors_completer_append_separator = False
 #  comma : use 'copy' if there is a ',' in the name, otherwise use 'invert'
 #  nocomma : "fn ln" -> "ln fn" (without the comma)
 # When this tweak is changed, the author_sort values stored with each author
-# must be recomputed by right-clicking on an author in the left-hand tags pane,
+# must be recomputed by right-clicking on an author in the left-hand tags panel,
 # selecting 'manage authors', and pressing 'Recalculate all author sort values'.
 # The author name suffixes are words that are ignored when they occur at the
 # end of an author name. The case of the suffix is ignored and trailing
@@ -79,10 +79,10 @@ author_name_copywords = ('Corporation', 'Company', 'Co.', 'Agency', 'Council',
 authors_split_regex = r'(?i),?\s+(and|with)\s+'
 
 #: Use author sort in Tag browser
-# Set which author field to display in the tags pane (the list of authors,
+# Set which author field to display in the tags panel (the list of authors,
 # series, publishers etc on the left hand side). The choices are author and
 # author_sort. This tweak affects only what is displayed under the authors
-# category in the tags pane and Content server. Please note that if you set this
+# category in the tags panel and Content server. Please note that if you set this
 # to author_sort, it is very possible to see duplicate names in the list because
 # although it is guaranteed that author names are unique, there is no such
 # guarantee for author_sort values. Showing duplicates won't break anything, but
@@ -94,7 +94,7 @@ authors_split_regex = r'(?i),?\s+(and|with)\s+'
 categories_use_field_for_author_name = 'author'
 
 #: Control partitioning of Tag browser
-# When partitioning the tags browser, the format of the subcategory label is
+# When partitioning the Tag browser, the format of the subcategory label is
 # controlled by a template: categories_collapsed_name_template if sorting by
 # name, categories_collapsed_rating_template if sorting by average rating, and
 # categories_collapsed_popularity_template if sorting by popularity. There are
@@ -342,29 +342,6 @@ sony_collection_sorting_rules = []
 # a book' are added when copying books to another library
 add_new_book_tags_when_importing_books = False
 
-#: Set custom metadata fields that the Content server will or will not display.
-# Controls what fields are displayed when clicking the "Search" button in the
-# browser to search your calibre library.
-# content_server_will_display is a list of custom fields to be displayed.
-# content_server_wont_display is a list of custom fields not to be displayed.
-# wont_display has priority over will_display.
-# The special value '*' means all custom fields. The value [] means no entries.
-# Defaults:
-#    content_server_will_display = ['*']
-#    content_server_wont_display = []
-#
-# Examples:
-#
-# To display only the custom fields #mytags and #genre:
-#   content_server_will_display = ['#mytags', '#genre']
-#   content_server_wont_display = []
-#
-# To display all fields except #mycomments:
-#   content_server_will_display = ['*']
-#   content_server_wont_display['#mycomments']
-content_server_will_display = ['*']
-content_server_wont_display = []
-
 #: Set the maximum number of sort 'levels'
 # Set the maximum number of sort 'levels' that calibre will use to resort the
 # library after certain operations such as searches or device insertion. Each
@@ -429,7 +406,7 @@ metadata_edit_custom_column_order = []
 
 #: The number of seconds to wait before sending emails
 # The number of seconds to wait before sending emails when using a
-# public email server like gmx/hotmail/gmail. Default is: 5 minutes
+# public email server like GMX/Hotmail/Gmail. Default is: 5 minutes
 # Setting it to lower may cause the server's SPAM controls to kick in,
 # making email sending fail. Changes will take effect only after a restart of
 # calibre. You can also change the list of hosts that calibre considers

@@ -1,4 +1,4 @@
-#!/usr/bin/env  python2
+#!/usr/bin/env python
 from __future__ import unicode_literals
 __license__ = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -36,7 +36,7 @@ class TheAtlantic(BasicNewsRecipe):
         dict(id='rubric'),
         dict(itemprop=['headline', 'image']),
         classes(
-            'article-header c-article-meta lead-img article-cover-extra article-body article-magazine article-cover-content'
+            'c-article-header__hed article-header c-article-meta lead-img article-cover-extra article-body article-magazine article-cover-content'
         ),
         dict(itemprop='articleBody'),
     ]

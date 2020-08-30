@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -11,8 +11,10 @@ from functools import partial
 from io import BytesIO
 
 from calibre.ebooks.metadata import author_to_author_sort, title_sort
+from calibre.ebooks.metadata.book.base import Metadata
 from calibre.utils.date import UNDEFINED_DATE
 from calibre.db.tests.base import BaseTest, IMG
+from calibre.db.backend import FTSQueryError
 from polyglot.builtins import iteritems, itervalues, unicode_type
 
 
@@ -421,13 +423,13 @@ class WritingTest(BaseTest):
         cache.set_metadata(2, mi)
         nmi = cache.get_metadata(2, get_cover=True, cover_as_data=True)
         ae(oldmi.cover_data, nmi.cover_data)
-        self.compare_metadata(nmi, oldmi, exclude={'last_modified', 'format_metadata'})
+        self.compare_metadata(nmi, oldmi, exclude={'last_modified', 'format_metadata', 'formats'})
         cache.set_metadata(1, mi2, force_changes=True)
         nmi2 = cache.get_metadata(1, get_cover=True, cover_as_data=True)
         # The new code does not allow setting of #series_index to None, instead
         # it is reset to 1.0
         ae(nmi2.get_extra('#series'), 1.0)
-        self.compare_metadata(nmi2, oldmi2, exclude={'last_modified', 'format_metadata', '#series_index'})
+        self.compare_metadata(nmi2, oldmi2, exclude={'last_modified', 'format_metadata', '#series_index', 'formats'})
 
         cache = self.init_cache(self.cloned_library)
         mi = cache.get_metadata(1)
@@ -435,6 +437,17 @@ class WritingTest(BaseTest):
         mi.tags = [x.upper() for x in mi.tags]
         cache.set_metadata(3, mi)
         self.assertEqual(set(otags), set(cache.field_for('tags', 3)), 'case changes should not be allowed in set_metadata')
+
+        # test that setting authors without author sort results in an
+        # auto-generated authors sort
+        mi = Metadata('empty', ['a1', 'a2'])
+        cache.set_metadata(1, mi)
+        self.assertEqual('a1 & a2', cache.field_for('author_sort', 1))
+        cache.set_sort_for_authors({cache.get_item_id('authors', 'a1'): 'xy'})
+        self.assertEqual('xy & a2', cache.field_for('author_sort', 1))
+        mi = Metadata('empty', ['a1'])
+        cache.set_metadata(1, mi)
+        self.assertEqual('xy', cache.field_for('author_sort', 1))
 
     # }}}
 
@@ -747,4 +760,76 @@ class WritingTest(BaseTest):
         self.assertEqual(len(changes), 3)
         prefs['test mutable'] = {k:k for k in reversed(range(10))}
         self.assertEqual(len(changes), 3, 'The database was written to despite there being no change in value')
+    # }}}
+
+    def test_annotations(self):  # {{{
+        'Test handling of annotations'
+        from calibre.utils.date import utcnow, EPOCH
+        cl = self.cloned_library
+        cache = self.init_cache(cl)
+        # First empty dirtied
+        cache.dump_metadata()
+        self.assertFalse(cache.dirtied_cache)
+
+        def a(**kw):
+            ts = utcnow()
+            kw['timestamp'] = utcnow().isoformat()
+            return kw, (ts - EPOCH).total_seconds()
+
+        annot_list = [
+            a(type='bookmark', title='bookmark1 changed', seq=1),
+            a(type='highlight', highlighted_text='text1', uuid='1', seq=2),
+            a(type='highlight', highlighted_text='text2', uuid='2', seq=3, notes='notes2 some word changed again'),
+        ]
+
+        def map_as_list(amap):
+            ans = []
+            for items in amap.values():
+                ans.extend(items)
+            ans.sort(key=lambda x:x['seq'])
+            return ans
+
+        cache.set_annotations_for_book(1, 'moo', annot_list)
+        amap = cache.annotations_map_for_book(1, 'moo')
+        self.assertEqual([x[0] for x in annot_list], map_as_list(amap))
+        self.assertFalse(cache.dirtied_cache)
+        cache.check_dirtied_annotations()
+        self.assertEqual(set(cache.dirtied_cache), {1})
+        cache.dump_metadata()
+        cache.check_dirtied_annotations()
+        self.assertFalse(cache.dirtied_cache)
+
+        # Test searching
+        results = cache.search_annotations('"changed"')
+        self.assertEqual([1, 3], [x['id'] for x in results])
+        results = cache.search_annotations('"changed"', annotation_type='bookmark')
+        self.assertEqual([1], [x['id'] for x in results])
+        results = cache.search_annotations('"Change"')
+        self.assertEqual([1, 3], [x['id'] for x in results])
+        results = cache.search_annotations('"change"', use_stemming=False)
+        self.assertFalse(results)
+        results = cache.search_annotations('"bookmark1"', highlight_start='[', highlight_end=']')
+        self.assertEqual(results[0]['text'], '[bookmark1] changed')
+        results = cache.search_annotations('"word"', highlight_start='[', highlight_end=']', snippet_size=3)
+        self.assertEqual(results[0]['text'], '…some [word] changed…')
+        self.assertRaises(FTSQueryError, cache.search_annotations, 'AND OR')
+
+        annot_list[0][0]['title'] = 'changed title'
+        cache.set_annotations_for_book(1, 'moo', annot_list)
+        amap = cache.annotations_map_for_book(1, 'moo')
+        self.assertEqual([x[0] for x in annot_list], map_as_list(amap))
+
+        del annot_list[1]
+        cache.set_annotations_for_book(1, 'moo', annot_list)
+        amap = cache.annotations_map_for_book(1, 'moo')
+        self.assertEqual([x[0] for x in annot_list], map_as_list(amap))
+        cache.check_dirtied_annotations()
+        cache.dump_metadata()
+        from calibre.ebooks.metadata.opf2 import OPF
+        raw = cache.read_backup(1)
+        opf = OPF(BytesIO(raw))
+        cache.restore_annotations(1, list(opf.read_annotations()))
+        amap = cache.annotations_map_for_book(1, 'moo')
+        self.assertEqual([x[0] for x in annot_list], map_as_list(amap))
+
     # }}}

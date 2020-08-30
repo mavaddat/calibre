@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -181,6 +181,10 @@ class Editor(QMainWindow):
 
     def current_tag(self, for_position_sync=True):
         return self.editor.current_tag(for_position_sync=for_position_sync)
+
+    @property
+    def highlighter(self):
+        return self.editor.highlighter
 
     @property
     def number_of_lines(self):

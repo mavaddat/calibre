@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal kovid@kovidgoyal.net'
@@ -303,7 +303,7 @@ class XMLConfig(dict):
     Similar to :class:`DynamicConfig`, except that it uses an XML storage
     backend instead of a pickle file.
 
-    See `https://docs.python.org/dev/library/plistlib.html`_ for the supported
+    See `https://docs.python.org/library/plistlib.html`_ for the supported
     data types.
     '''
 
@@ -363,29 +363,18 @@ class XMLConfig(dict):
         self.update(d)
 
     def __getitem__(self, key):
-        from polyglot.plistlib import Data
         try:
-            ans = dict.__getitem__(self, key)
-            if isinstance(ans, Data):
-                ans = ans.data
-            return ans
+            return dict.__getitem__(self, key)
         except KeyError:
             return self.defaults.get(key, None)
 
     def get(self, key, default=None):
-        from polyglot.plistlib import Data
         try:
-            ans = dict.__getitem__(self, key)
-            if isinstance(ans, Data):
-                ans = ans.data
-            return ans
+            return dict.__getitem__(self, key)
         except KeyError:
             return self.defaults.get(key, default)
 
     def __setitem__(self, key, val):
-        from polyglot.plistlib import Data
-        if isinstance(val, bytes):
-            val = Data(val)
         dict.__setitem__(self, key, val)
         self.commit()
 

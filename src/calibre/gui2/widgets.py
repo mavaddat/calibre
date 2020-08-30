@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -524,7 +524,7 @@ class EnLineEdit(LineEditECM, QLineEdit):  # {{{
     def event(self, ev):
         # See https://bugreports.qt.io/browse/QTBUG-46911
         if ev.type() == ev.ShortcutOverride and (
-                ev.key() in (Qt.Key_Left, Qt.Key_Right) and (ev.modifiers() & ~Qt.KeypadModifier) == Qt.ControlModifier):
+                hasattr(ev, 'key') and ev.key() in (Qt.Key_Left, Qt.Key_Right) and (ev.modifiers() & ~Qt.KeypadModifier) == Qt.ControlModifier):
             ev.accept()
         return QLineEdit.event(self, ev)
 

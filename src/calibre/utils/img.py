@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2015-2019, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import errno
 import os
@@ -17,7 +17,7 @@ from PyQt5.QtCore import QBuffer, QByteArray, Qt
 from PyQt5.QtGui import QColor, QImage, QImageReader, QImageWriter, QPixmap, QTransform
 
 from calibre import fit_image, force_unicode
-from calibre.constants import iswindows, plugins, ispy3
+from calibre.constants import iswindows, plugins
 from calibre.ptempfile import TemporaryDirectory
 from calibre.utils.config_base import tweaks
 from calibre.utils.filenames import atomic_rename
@@ -53,17 +53,57 @@ def get_exe_path(name):
 
 def load_jxr_data(data):
     with TemporaryDirectory() as tdir:
-        if iswindows and isinstance(tdir, unicode_type):
-            tdir = tdir.encode('mbcs')
+        if isinstance(tdir, bytes):
+            tdir = os.fsdecode(tdir)
         with lopen(os.path.join(tdir, 'input.jxr'), 'wb') as f:
             f.write(data)
         cmd = [get_exe_path('JxrDecApp'), '-i', 'input.jxr', '-o', 'output.tif']
-        creationflags = 0x08 if iswindows else 0
+        creationflags = subprocess.DETACHED_PROCESS if iswindows else 0
         subprocess.Popen(cmd, cwd=tdir, stdout=lopen(os.devnull, 'wb'), stderr=subprocess.STDOUT, creationflags=creationflags).wait()
         i = QImage()
         if not i.load(os.path.join(tdir, 'output.tif')):
             raise NotImage('Failed to convert JPEG-XR image')
         return i
+
+# }}}
+
+# png <-> gif {{{
+
+
+def png_data_to_gif_data(data):
+    from PIL import Image
+    img = Image.open(BytesIO(data))
+    buf = BytesIO()
+    if img.mode in ('p', 'P'):
+        transparency = img.info.get('transparency')
+        if transparency is not None:
+            img.save(buf, 'gif', transparency=transparency)
+        else:
+            img.save(buf, 'gif')
+    elif img.mode in ('rgba', 'RGBA'):
+        alpha = img.split()[3]
+        mask = Image.eval(alpha, lambda a: 255 if a <=128 else 0)
+        img = img.convert('RGB').convert('P', palette=Image.ADAPTIVE, colors=255)
+        img.paste(255, mask)
+        img.save(buf, 'gif', transparency=255)
+    else:
+        img = img.convert('P', palette=Image.ADAPTIVE)
+        img.save(buf, 'gif')
+    return buf.getvalue()
+
+
+class AnimatedGIF(ValueError):
+    pass
+
+
+def gif_data_to_png_data(data, discard_animation=False):
+    from PIL import Image
+    img = Image.open(BytesIO(data))
+    if img.is_animated and not discard_animation:
+        raise AnimatedGIF()
+    buf = BytesIO()
+    img.save(buf, 'png')
+    return buf.getvalue()
 
 # }}}
 
@@ -140,11 +180,7 @@ def image_to_data(img, compression_quality=95, fmt='JPEG', png_compression_level
         w.setQuality(90)
         if not w.write(img):
             raise ValueError('Failed to export image as ' + fmt + ' with error: ' + w.errorString())
-        from PIL import Image
-        im = Image.open(BytesIO(ba.data()))
-        buf = BytesIO()
-        im.save(buf, 'gif')
-        return buf.getvalue()
+        return png_data_to_gif_data(ba.data())
     is_jpeg = fmt in ('JPG', 'JPEG')
     w = QImageWriter(buf, fmt.encode('ascii'))
     if is_jpeg:
@@ -506,16 +542,9 @@ def run_optimizer(file_path, cmd, as_filter=False, input_data=None):
             cmd[cmd.index(q)] = r
         if not as_filter:
             repl(True, iname), repl(False, oname)
-        if iswindows and not ispy3:
-            # subprocess in python 2 cannot handle unicode strings that are not
-            # encodeable in mbcs, so we fail here, where it is more explicit,
-            # instead.
-            cmd = [x.encode('mbcs') if isinstance(x, unicode_type) else x for x in cmd]
-            if isinstance(cwd, unicode_type):
-                cwd = cwd.encode('mbcs')
         stdin = subprocess.PIPE if as_filter else None
         stderr = subprocess.PIPE if as_filter else subprocess.STDOUT
-        creationflags = 0x08 if iswindows else 0
+        creationflags = subprocess.DETACHED_PROCESS if iswindows else 0
         p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=stderr, stdin=stdin, creationflags=creationflags)
         stderr = p.stderr if as_filter else p.stdout
         if as_filter:
@@ -615,7 +644,9 @@ def test():  # {{{
     despeckle_image(img)
     remove_borders_from_image(img)
     image_to_data(img, fmt='GIF')
-    raw = subprocess.Popen([get_exe_path('JxrDecApp'), '-h'], creationflags=0x08 if iswindows else 0, stdout=subprocess.PIPE).stdout.read()
+    raw = subprocess.Popen([get_exe_path('JxrDecApp'), '-h'],
+                           creationflags=subprocess.DETACHED_PROCESS if iswindows else 0,
+                           stdout=subprocess.PIPE).stdout.read()
     if b'JPEG XR Decoder Utility' not in raw:
         raise SystemExit('Failed to run JxrDecApp')
 # }}}

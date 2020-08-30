@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import re, numbers
 from collections import defaultdict, namedtuple
@@ -26,7 +26,6 @@ from calibre.gui2.custom_column_widgets import populate_metadata_page
 from calibre.gui2.dialogs.metadata_bulk_ui import Ui_MetadataBulkDialog
 from calibre.gui2.dialogs.tag_editor import TagEditor
 from calibre.gui2.dialogs.template_line_editor import TemplateLineEditor
-from calibre.gui2.metadata.basic_widgets import CalendarWidget
 from calibre.utils.config import JSONConfig, dynamic, prefs, tweaks
 from calibre.utils.date import qt_to_dt, internal_iso_format_string
 from calibre.utils.icu import capitalize, sort_key
@@ -483,9 +482,9 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.ids = [self.db.id(r) for r in rows]
         self.first_title = self.db.title(self.ids[0], index_is_id=True)
         self.cover_clone.setToolTip(unicode_type(self.cover_clone.toolTip()) + ' (%s)' % self.first_title)
-        self.box_title.setText('<p>' +
-                _('Editing meta information for <b>%d books</b>') %
-                len(rows))
+        self.setWindowTitle(ngettext(
+            'Editing metadata for one book',
+            'Editing metadata for {} books', len(rows)).format(len(rows)))
         self.write_series = False
         self.changed = False
         self.refresh_books = refresh_books
@@ -503,9 +502,6 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.series.editTextChanged.connect(self.series_changed)
         self.tag_editor_button.clicked.connect(self.tag_editor)
         self.autonumber_series.stateChanged[int].connect(self.auto_number_changed)
-        self.pubdate.setMinimumDateTime(UNDEFINED_QDATETIME)
-        self.pubdate_cw = CalendarWidget(self.pubdate)
-        self.pubdate.setCalendarWidget(self.pubdate_cw)
         pubdate_format = tweaks['gui_pubdate_display_format']
         if pubdate_format == 'iso':
             pubdate_format = internal_iso_format_string()
@@ -515,9 +511,6 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.clear_pubdate_button.clicked.connect(self.clear_pubdate)
         self.pubdate.dateTimeChanged.connect(self.do_apply_pubdate)
         self.adddate.setDateTime(QDateTime.currentDateTime())
-        self.adddate.setMinimumDateTime(UNDEFINED_QDATETIME)
-        self.adddate_cw = CalendarWidget(self.adddate)
-        self.adddate.setCalendarWidget(self.adddate_cw)
         adddate_format = tweaks['gui_timestamp_display_format']
         if adddate_format == 'iso':
             adddate_format = internal_iso_format_string()
@@ -681,7 +674,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
                  'search text. The text is replaced by the specified replacement '
                  'text everywhere it is found in the specified field. After '
                  'replacement is finished, the text can be changed to '
-                 'upper-case, lower-case, or title-case. If the case-sensitive '
+                 'upper-case, lower-case, or title-case. If the Case-sensitive '
                  'check box is checked, the search text must match exactly. If '
                  'it is unchecked, the search text will match both upper- and '
                  'lower-case letters'
@@ -1073,7 +1066,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
     # }}}
 
     def create_custom_column_editors(self):
-        w = self.central_widget.widget(1)
+        w = self.tab
         layout = QGridLayout()
         self.custom_column_widgets, self.__cc_spacers = \
             populate_metadata_page(layout, self.db, self.ids, parent=w,

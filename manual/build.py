@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -11,7 +11,8 @@ from functools import partial
 
 j, d, a = os.path.join, os.path.dirname, os.path.abspath
 BASE = d(a(__file__))
-SPHINX_BUILD = 'sphinx-build2'
+SPHINX_BUILD = ['sphinx-build']
+is_ci = os.environ.get('CI') == 'true'
 
 sys.path.insert(0, d(BASE))
 from setup import __appname__, __version__
@@ -23,7 +24,7 @@ def sphinx_build(language, base, builder='html', bdir='html', t=None, quiet=True
     destdir = j(base, bdir)
     if not os.path.exists(destdir):
         os.makedirs(destdir)
-    ans = [SPHINX_BUILD, '-D', ('language=' + language), '-b', builder]
+    ans = SPHINX_BUILD + ['-D', ('language=' + language), '-b', builder]
     if quiet:
         ans.append('-q')
     if very_quiet:
@@ -40,7 +41,6 @@ def sphinx_build(language, base, builder='html', bdir='html', t=None, quiet=True
 
 def build_manual(language, base):
     sb = partial(sphinx_build, language, base)
-    skip_pdf = language == 'tr'
     onlinedir = sb(t='online')
     epubdir = sb('myepub', 'epub')
     latexdir = sb('mylatex', 'latex')
@@ -52,36 +52,38 @@ def build_manual(language, base):
         p.stdin.close()
         return p.wait()
     try:
-        if not skip_pdf:
-            for i in range(3):
-                run_cmd(['pdflatex', '-interaction=nonstopmode', 'calibre.tex'])
-            run_cmd(['makeindex', '-s', 'python.ist', 'calibre.idx'])
-            for i in range(2):
-                run_cmd(['pdflatex', '-interaction=nonstopmode', 'calibre.tex'])
-            if not os.path.exists('calibre.pdf'):
-                print('Failed to build pdf file, see calibre.log in the latex directory', file=sys.stderr)
-                raise SystemExit(1)
+        for i in range(3):
+            run_cmd(['xelatex', '-interaction=nonstopmode', 'calibre.tex'])
+        run_cmd(['makeindex', '-s', 'python.ist', 'calibre.idx'])
+        for i in range(2):
+            run_cmd(['xelatex', '-interaction=nonstopmode', 'calibre.tex'])
+        if not os.path.exists('calibre.pdf'):
+            print('Failed to build pdf file, see calibre.log in the latex directory', file=sys.stderr)
+            raise SystemExit(1)
     finally:
         os.chdir(pwd)
     epub_dest = j(onlinedir, 'calibre.epub')
     pdf_dest = j(onlinedir, 'calibre.pdf')
     shutil.copyfile(j(epubdir, 'calibre.epub'), epub_dest)
-    if not skip_pdf:
-        shutil.copyfile(j(latexdir, 'calibre.pdf'), pdf_dest)
+    shutil.copyfile(j(latexdir, 'calibre.pdf'), pdf_dest)
     epub_to_azw3(epub_dest)
 
 
 def build_pot(base):
-    cmd = [SPHINX_BUILD, '-b', 'gettext', '-t', 'online', '-t', 'gettext', '.', base]
-    print (' '.join(cmd))
+    cmd = SPHINX_BUILD + ['-b', 'gettext', '-t', 'online', '-t', 'gettext', '.', base]
+    if is_ci:
+        sp = eval(subprocess.check_output(['python', '-c', 'import sphinx; print(sphinx.__path__)']).decode('utf-8'))
+        code = f'import sys, os; sys.path += [{os.path.dirname(sp[0])!r}]; from sphinx.cmd.build import main; main({cmd[1:]!r})'
+        cmd = [sys.executable, '-c', code]
+    print(' '.join(cmd))
     subprocess.check_call(cmd)
     os.remove(j(base, 'generated.pot'))
     return base
 
 
 def build_linkcheck(base):
-    cmd = [SPHINX_BUILD, '-b', 'linkcheck', '-t', 'online', '-t', 'linkcheck', '.', base]
-    print (' '.join(cmd))
+    cmd = SPHINX_BUILD + ['-b', 'linkcheck', '-t', 'online', '-t', 'linkcheck', '.', base]
+    print(' '.join(cmd))
     subprocess.check_call(cmd)
     return base
 
@@ -103,7 +105,7 @@ if __name__ == '__main__':
             import json
             os.environ['ALL_USER_MANUAL_LANGUAGES'] = ' '.join(json.load(open('locale/completed.json', 'rb')))
         sphinx_build(language, base, t='online', quiet=False)
-        print ('Manual built in', j(base, 'html'))
+        print('Manual built in', j(base, 'html'))
     else:
         p = argparse.ArgumentParser()
         p.add_argument('language', help='The language to build for')
@@ -122,4 +124,4 @@ if __name__ == '__main__':
         else:
             os.environ['CALIBRE_OVERRIDE_LANG'] = language
             build_manual(language, base)
-            print ('Manual for', language, 'built in', j(base, 'html'))
+            print('Manual for', language, 'built in', j(base, 'html'))

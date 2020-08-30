@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -12,10 +12,10 @@ from itertools import chain, repeat
 from operator import itemgetter
 from functools import wraps
 
-from polyglot.builtins import iteritems, itervalues, reraise, map, is_py3, unicode_type, string_or_bytes
+from polyglot.builtins import iteritems, itervalues, reraise, map, unicode_type, string_or_bytes
 
 from calibre import guess_type, force_unicode
-from calibre.constants import __version__, plugins, ispy3
+from calibre.constants import __version__
 from calibre.srv.loop import WRITE
 from calibre.srv.errors import HTTPSimpleResponse
 from calibre.srv.http_request import HTTPRequest, read_headers
@@ -33,15 +33,8 @@ MULTIPART_SEPARATOR = uuid.uuid4().hex
 if isinstance(MULTIPART_SEPARATOR, bytes):
     MULTIPART_SEPARATOR = MULTIPART_SEPARATOR.decode('ascii')
 COMPRESSIBLE_TYPES = {'application/json', 'application/javascript', 'application/xml', 'application/oebps-package+xml'}
-if is_py3:
-    import zlib
-    from itertools import zip_longest
-else:
-    zlib, zlib2_err = plugins['zlib2']
-    if zlib2_err:
-        raise RuntimeError('Failed to load the zlib2 module with error: ' + zlib2_err)
-    del zlib2_err
-    from itertools import izip_longest as zip_longest
+import zlib
+from itertools import zip_longest
 
 
 def header_list_to_file(buf):  # {{{
@@ -219,7 +212,7 @@ class RequestData(object):  # {{{
     username = None
 
     def __init__(self, method, path, query, inheaders, request_body_file, outheaders, response_protocol,
-                 static_cache, opts, remote_addr, remote_port, is_local_connection, translator_cache,
+                 static_cache, opts, remote_addr, remote_port, is_trusted_ip, translator_cache,
                  tdir, forwarded_for, request_original_uri=None):
 
         (self.method, self.path, self.query, self.inheaders, self.request_body_file, self.outheaders,
@@ -228,7 +221,7 @@ class RequestData(object):  # {{{
             response_protocol, static_cache, translator_cache
         )
 
-        self.remote_addr, self.remote_port, self.is_local_connection = remote_addr, remote_port, is_local_connection
+        self.remote_addr, self.remote_port, self.is_trusted_ip = remote_addr, remote_port, is_trusted_ip
         self.forwarded_for = forwarded_for
         self.request_original_uri = request_original_uri
         self.opts = opts
@@ -290,8 +283,8 @@ class RequestData(object):  # {{{
         if lang_code != self.lang_code:
             found, lang, t = self.get_translator(lang_code)
             self.lang_code = lang
-            self.gettext_func = getattr(t, 'gettext' if ispy3 else 'ugettext')
-            self.ngettext_func = getattr(t, 'ngettext' if ispy3 else 'ungettext')
+            self.gettext_func = t.gettext
+            self.ngettext_func = t.ngettext
 # }}}
 
 
@@ -446,7 +439,7 @@ class HTTPConnection(HTTPRequest):
         data = RequestData(
             self.method, self.path, self.query, inheaders, request_body_file,
             outheaders, self.response_protocol, self.static_cache, self.opts,
-            self.remote_addr, self.remote_port, self.is_local_connection,
+            self.remote_addr, self.remote_port, self.is_trusted_ip,
             self.translator_cache, self.tdir, self.forwarded_for, self.request_original_uri
         )
         self.queue_job(self.run_request_handler, data)

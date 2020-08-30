@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2009, John Schember <john at nachtimwald.com> ' \
@@ -86,17 +86,17 @@ class Device(DeviceConfig, DevicePlugin):
 
     VENDOR_NAME = None
 
-    #: String identifying the main memory of the device in the windows PnP id
+    #: String identifying the main memory of the device in the Windows PnP id
     #: strings
     #: This can be None, string, list of strings or compiled regex
     WINDOWS_MAIN_MEM = None
 
-    #: String identifying the first card of the device in the windows PnP id
+    #: String identifying the first card of the device in the Windows PnP id
     #: strings
     #: This can be None, string, list of strings or compiled regex
     WINDOWS_CARD_A_MEM = None
 
-    #: String identifying the second card of the device in the windows PnP id
+    #: String identifying the second card of the device in the Windows PnP id
     #: strings
     #: This can be None, string, list of strings or compiled regex
     WINDOWS_CARD_B_MEM = None

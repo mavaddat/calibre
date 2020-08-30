@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2017, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import os
 from collections import OrderedDict, defaultdict
@@ -246,9 +245,10 @@ class GuiLibraryBroker(LibraryBroker):
         for library_id in tuple(self.loaded_dbs):
             if library_id != self.gui_library_id and now - self.last_used_times[
                 library_id] > EXPIRED_AGE:
-                db = self.loaded_dbs.pop(library_id)
-                db.close()
-                db.break_cycles()
+                db = self.loaded_dbs.pop(library_id, None)
+                if db is not None:
+                    db.close()
+                    db.break_cycles()
 
     def prune_loaded_dbs(self):
         with self:

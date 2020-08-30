@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -10,27 +10,26 @@ import textwrap, re, os, shutil, weakref
 from datetime import date, datetime
 
 from PyQt5.Qt import (
-    Qt, QDateTimeEdit, pyqtSignal, QMessageBox, QIcon, QToolButton, QWidget,
+    Qt, pyqtSignal, QMessageBox, QIcon, QToolButton, QWidget,
     QLabel, QGridLayout, QApplication, QDoubleSpinBox, QListWidgetItem, QSize,
     QPixmap, QDialog, QMenu, QLineEdit, QSizePolicy, QKeySequence,
-    QDialogButtonBox, QAction, QCalendarWidget, QDate, QDateTime, QUndoCommand,
+    QDialogButtonBox, QAction, QDateTime, QUndoCommand,
     QUndoStack, QVBoxLayout, QPlainTextEdit, QUrl)
 
 from calibre.gui2.widgets import EnLineEdit, FormatList as _FormatList, ImageView
-from calibre.gui2.widgets2 import access_key, populate_standard_spinbox_context_menu, RightClickButton, Dialog, RatingEditor
+from calibre.gui2.widgets2 import access_key, populate_standard_spinbox_context_menu, RightClickButton, Dialog, RatingEditor, DateTimeEdit
 from calibre.utils.icu import sort_key
 from calibre.utils.config import tweaks, prefs
 from calibre.ebooks.metadata import (
     title_sort, string_to_authors, check_isbn, authors_to_sort_string)
 from calibre.ebooks.metadata.meta import get_metadata
-from calibre.gui2 import (file_icon_provider, UNDEFINED_QDATETIME,
+from calibre.gui2 import (file_icon_provider,
         choose_files, error_dialog, choose_images, gprefs)
 from calibre.gui2.complete2 import EditWithComplete
 from calibre.utils.date import (
     local_tz, qt_to_dt, as_local_time, UNDEFINED_DATE, is_date_undefined,
     utcfromtimestamp, parse_only_date, internal_iso_format_string)
 from calibre import strftime
-from calibre.constants import ispy3
 from calibre.ebooks import BOOK_EXTENSIONS
 from calibre.customize.ui import run_plugins_on_import
 from calibre.gui2.comments_editor import Editor
@@ -53,7 +52,7 @@ def save_dialog(parent, title, msg, det_msg=''):
 
 
 def clean_text(x):
-    return re.sub(r'\s', ' ', x.strip(), flags=re.ASCII if ispy3 else 0)
+    return re.sub(r'\s', ' ', x.strip(), flags=re.ASCII)
 
 
 '''
@@ -1797,14 +1796,7 @@ class PublisherEdit(EditWithComplete, ToMetadataMixin):  # {{{
 # DateEdit {{{
 
 
-class CalendarWidget(QCalendarWidget):
-
-    def showEvent(self, ev):
-        if self.selectedDate().year() == UNDEFINED_DATE.year:
-            self.setSelectedDate(QDate.currentDate())
-
-
-class DateEdit(make_undoable(QDateTimeEdit), ToMetadataMixin):
+class DateEdit(make_undoable(DateTimeEdit), ToMetadataMixin):
 
     TOOLTIP = ''
     LABEL = _('&Date:')
@@ -1824,12 +1816,6 @@ class DateEdit(make_undoable(QDateTimeEdit), ToMetadataMixin):
         elif fmt == 'iso':
             fmt = internal_iso_format_string()
         self.setDisplayFormat(fmt)
-        self.setCalendarPopup(True)
-        self.cw = CalendarWidget(self)
-        self.cw.setVerticalHeaderFormat(self.cw.NoVerticalHeader)
-        self.setCalendarWidget(self.cw)
-        self.setMinimumDateTime(UNDEFINED_QDATETIME)
-        self.setSpecialValueText(_('Undefined'))
         if create_clear_button:
             self.clear_button = QToolButton(parent)
             self.clear_button.setIcon(QIcon(I('trash.png')))
@@ -1867,13 +1853,7 @@ class DateEdit(make_undoable(QDateTimeEdit), ToMetadataMixin):
         return o != c
 
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Minus:
-            ev.accept()
-            self.setDateTime(self.minimumDateTime())
-        elif ev.key() == Qt.Key_Equal:
-            ev.accept()
-            self.setDateTime(QDateTime.currentDateTime())
-        elif ev.key() == Qt.Key_Up and is_date_undefined(self.current_val):
+        if ev.key() == Qt.Key_Up and is_date_undefined(self.current_val):
             self.setDateTime(QDateTime.currentDateTime())
         elif ev.key() == Qt.Key_Tab and is_date_undefined(self.current_val):
             ev.ignore()

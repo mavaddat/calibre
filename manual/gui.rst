@@ -68,7 +68,7 @@ To add an additional format for an existing book you can do any of three things:
 
     2. Right click the :guilabel:`Add books` button and choose :guilabel:`Add files to selected books`.
 
-    3. Click the :guilabel:`Add books` button in the top right area of the :guilabel:`Edit Metadata` dialog, accessed by the :ref:`edit_meta_information` action.
+    3. Click the :guilabel:`Add books` button in the top right area of the :guilabel:`Edit metadata` dialog, accessed by the :ref:`edit_meta_information` action.
 
 .. _edit_meta_information:
 
@@ -94,7 +94,7 @@ Convert books
     :class: float-right-img
 
 |cei| E-books can be converted from a number of formats into whatever format your e-book reader prefers.
-Many e-books available for purchase will be protected by `Digital Rights Management <https://drmfree.calibre-ebook.com/about#drm>`_ *(DRM)* technology.
+Many e-books available for purchase will be protected by :doc:`Digital Rights Management <drm>` *(DRM)* technology.
 calibre will not convert these e-books. It is easy to remove the DRM from many formats, but as this may be illegal,
 you will have to find tools to liberate your books yourself and then use calibre to convert them.
 
@@ -345,7 +345,7 @@ Two other kinds of searches are available: equality search and search using `reg
 
 Equality searches are indicated by prefixing the search string with an equals sign (=). For example, the query
 ``tag:"=science"`` will match "science", but not "science fiction" or "hard science". Regular expression searches are
-indicated by prefixing the search string with a tilde (~). Any `Python-compatible regular expression <https://docs.python.org/2/library/re.html>`_ can
+indicated by prefixing the search string with a tilde (~). Any `Python-compatible regular expression <https://docs.python.org/library/re.html>`_ can
 be used. Note that backslashes used to escape special characters in regular expressions must be doubled because single backslashes will be removed during query parsing. For example, to match a literal parenthesis you must enter ``\\(``. Regular expression searches are 'contains' searches unless the expression contains anchors.
 
 Should you need to search for a string with a leading equals or tilde, prefix the string with a backslash.
@@ -400,11 +400,11 @@ The special field ``search`` is used for saved searches. So if you save a search
 "My spouse's books" you can enter ``search:"My spouse's books"`` in the Search bar to reuse the saved
 search. More about saving searches below.
 
-The special field ``vl`` is used to search for books in a virtual library. For
-example, ``vl:Read`` will find all the books in the *Read* virtual library. The search
+The special field ``vl`` is used to search for books in a Virtual library. For
+example, ``vl:Read`` will find all the books in the *Read* Virtual library. The search
 ``vl:Read and vl:"Science Fiction"`` will find all the books that are in both the *Read* and
-*Science Fiction* virtual libraries. The value following ``vl:`` must be the name of a
-virtual library. If the virtual library name contains spaces then surround it with quotes.
+*Science Fiction* Virtual libraries. The value following ``vl:`` must be the name of a
+Virtual library. If the Virtual library name contains spaces then surround it with quotes.
 
 You can search for the absence or presence of a field using the special "true" and "false" values. For example::
 
@@ -420,16 +420,16 @@ Searching for ``no`` or ``unchecked`` will find all books with ``No`` in the col
 
 Hierarchical items (e.g. A.B.C) use an extended syntax to match initial parts of the hierarchy. This is done by adding a period between the exact match indicator (=) and the text. For example, the query ``tags:=.A`` will find the tags `A` and `A.B`, but will not find the tags `AA` or `AA.B`. The query ``tags:=.A.B`` will find the tags `A.B` and `A.B.C`, but not the tag `A`.
 
-Identifiers (e.g., isbn, doi, lccn etc) also use an extended syntax. First, note that an identifier has the form ``type:value``, as in ``isbn:123456789``. The extended syntax permits you to specify independently which type and value to search for. Both the type and the value parts of the query can use `equality`, `contains`, or `regular expression` matches. Examples:
+Identifiers (e.g., ISBN, doi, lccn etc) also use an extended syntax. First, note that an identifier has the form ``type:value``, as in ``isbn:123456789``. The extended syntax permits you to specify independently which type and value to search for. Both the type and the value parts of the query can use `equality`, `contains`, or `regular expression` matches. Examples:
 
     * ``identifiers:true`` will find books with any identifier.
     * ``identifiers:false`` will find books with no identifier.
     * ``identifiers:123`` will search for books with any type having a value containing `123`.
     * ``identifiers:=123456789`` will search for books with any type having a value equal to `123456789`.
-    * ``identifiers:=isbn:`` and ``identifiers:isbn:true`` will find books with a type equal to isbn having any value
-    * ``identifiers:=isbn:false`` will find books with no type equal to isbn.
-    * ``identifiers:=isbn:123`` will find books with a type equal to isbn having a value containing `123`.
-    * ``identifiers:=isbn:=123456789`` will find books with a type equal to isbn having a value equal to `123456789`.
+    * ``identifiers:=isbn:`` and ``identifiers:isbn:true`` will find books with a type equal to ISBN having any value
+    * ``identifiers:=isbn:false`` will find books with no type equal to ISBN.
+    * ``identifiers:=isbn:123`` will find books with a type equal to ISBN having a value containing `123`.
+    * ``identifiers:=isbn:=123456789`` will find books with a type equal to ISBN having a value equal to `123456789`.
     * ``identifiers:i:1`` will find books with a type containing an `i` having a value containing a `1`.
 
 
@@ -448,7 +448,9 @@ Saving searches
 
 calibre allows you to save a frequently used search under a special name and then reuse that search with a single click. To do this, create your search either by typing it in the Search bar or using the Tag browser. Then type the name you would like to give to the search in the Saved Searches box next to the Search bar. Click the plus icon next to the saved searches box to save the search.
 
-Now you can access your saved search in the Tag browser under "Searches". A single click will allow you to reuse any arbitrarily complex search easily, without needing to re-create it.
+Now you can access your saved search in the Tag browser under :guilabel:`Saved
+searches`. A single click will allow you to reuse any arbitrarily complex
+search easily, without needing to re-create it.
 
 Virtual libraries
 -------------------
@@ -456,7 +458,7 @@ Virtual libraries
 A :guilabel:`Virtual library` is a way to pretend that your calibre library has
 only a few books instead of its full collection. This is an excellent way to
 partition your large collection of books into smaller, manageable chunks. To
-learn how to create and use virtual libraries, see the tutorial:
+learn how to create and use Virtual libraries, see the tutorial:
 :ref:`virtual_libraries`.
 
 .. _config_filename_metadata:
@@ -548,7 +550,7 @@ You can search User categories in the same way as built-in categories, by clicki
     3. "everything not matching an item in the category" shown by a single red minus sign.
     4. "everything not matching an item in the category or its sub-categories" shown by two red minus signs.
 
-It is also possible to create hierarchies inside some of the text categories such as tags, series, and custom columns. These hierarchies show with the small triangle, permitting the sub-items to be hidden. To use hierarchies of items in a category, you must first go to :guilabel:`Preferences->Interface->Look & feel` and enter the category name(s) into the "Categories with hierarchical items" box. Once this is done, items in that category that contain periods will be shown using the small triangle. For example, assume you create a custom column called "Genre" and indicate that it contains hierarchical items. Once done, items such as Mystery.Thriller and Mystery.English will display as Mystery with the small triangle next to it. Clicking on the triangle will show Thriller and English as sub-items. See :ref:`Managing subgroups of books, for example "genre" <subgroups-tutorial>` for more information.
+It is also possible to create hierarchies inside some of the text categories such as tags, series, and custom columns. These hierarchies show with the small triangle, permitting the sub-items to be hidden. To use hierarchies of items in a category, you must first go to :guilabel:`Preferences->Interface->Look & feel` and enter the category name(s) into the "Categories with hierarchical items" field. Once this is done, items in that category that contain periods will be shown using the small triangle. For example, assume you create a custom column called "Genre" and indicate that it contains hierarchical items. Once done, items such as Mystery.Thriller and Mystery.English will display as Mystery with the small triangle next to it. Clicking on the triangle will show Thriller and English as sub-items. See :ref:`Managing subgroups of books, for example "genre" <subgroups-tutorial>` for more information.
 
 Hierarchical items (items with children) use the same four 'click-on' searches as User categories. Items that do not have children use two of the searches: "everything matching" and "everything not matching".
 
@@ -618,7 +620,7 @@ You can see if a column can be Quickview'ed by hovering your mouse over the colu
 
 Options (in :guilabel:`Preferences->Look & feel->Quickview`):
 
-	* Respect (or not) the current virtual library. If checked then Quickview shows only books in the current virtual library. Default: respect virtual libraries
+	* Respect (or not) the current Virtual library. If checked then Quickview shows only books in the current Virtual library. Default: respect Virtual libraries
 	* Change the Quickview window contents when the column is changed on the book list using the cursor keys. Default: don't follow changes made with cursor keys
 	* Change the column being "quickview'ed" when a cell in the Quickview window is double-clicked. Otherwise the book is changed but the column being examined is not. Default: change the column
 	* Change the column being "quickview'ed" to the current column when the return key is pressed in the Quickview panel. Otherwise the book is changed but the column being examined is not. Default: change the column
@@ -659,15 +661,15 @@ calibre has several keyboard shortcuts to save you time and mouse movement. Thes
     * - :kbd:`F2 (Enter in macOS)`
       - Edit the metadata of the currently selected field in the book list.
     * - :kbd:`A`
-      - Add Books
+      - Add books
     * - :kbd:`Shift+A`
-      - Add Formats to the selected books
+      - Add formats to the selected books
     * - :kbd:`C`
-      - Convert selected Books
+      - Convert selected books
     * - :kbd:`D`
       - Send to device
     * - :kbd:`Del`
-      - Remove selected Books
+      - Remove selected books
     * - :kbd:`E`
       - Edit metadata of selected books
     * - :kbd:`G`
@@ -719,15 +721,15 @@ calibre has several keyboard shortcuts to save you time and mouse movement. Thes
     * - :kbd:`Shift+Esc`
       - Focus the book list
     * - :kbd:`Ctrl+Esc`
-      - Clear the virtual library
+      - Clear the Virtual library
     * - :kbd:`Alt+Esc`
       - Clear the additional restriction
     * - :kbd:`Ctrl+*`
-      - Create a temporary virtual library based on the current search
+      - Create a temporary Virtual library based on the current search
     * - :kbd:`Ctrl+Right`
-      - Select the next virtual library tab
+      - Select the next Virtual library tab
     * - :kbd:`Ctrl+Left`
-      - Select the previous virtual library tab
+      - Select the previous Virtual library tab
     * - :kbd:`N or F3`
       - Find the next book that matches the current search (only works if search highlighting is turned on in search preferences)
     * - :kbd:`Shift+N or Shift+F3`

@@ -1,13 +1,12 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import traceback, errno, os, time, shutil
 from collections import namedtuple, defaultdict
-from tempfile import SpooledTemporaryFile
 
 from PyQt5.Qt import QObject, Qt, pyqtSignal
 
@@ -17,7 +16,7 @@ from calibre.customize.ui import can_set_metadata
 from calibre.db.errors import NoSuchFormat
 from calibre.ebooks.metadata import authors_to_string
 from calibre.ebooks.metadata.opf2 import metadata_to_opf
-from calibre.ptempfile import PersistentTemporaryDirectory
+from calibre.ptempfile import PersistentTemporaryDirectory, SpooledTemporaryFile
 from calibre.gui2 import error_dialog, warning_dialog, gprefs, open_local_file
 from calibre.gui2.dialogs.progress import ProgressDialog
 from calibre.utils.formatter_functions import load_user_template_functions
@@ -63,10 +62,6 @@ class SpooledFile(SpooledTemporaryFile):  # {{{
 
         self._rolled = True
 
-    def truncate(self, *args):
-        # The stdlib SpooledTemporaryFile implementation of truncate() doesn't
-        # allow specifying a size.
-        self._file.truncate(*args)
 # }}}
 
 
@@ -158,7 +153,7 @@ class Saver(QObject):
             except Failure as err:
                 error_dialog(self.pd, _('Critical failure'), _(
                     'Could not save books to disk, click "Show details" for more information'),
-                    det_msg=unicode_type(err.failure_message) + '\n' + unicode_type(err.details), show=True)
+                    det_msg=force_unicode(err.failure_message) + '\n' + force_unicode(err.details), show=True)
                 self.pd.canceled = True
         self.do_one_signal.emit()
 

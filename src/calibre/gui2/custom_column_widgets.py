@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -9,10 +9,10 @@ __docformat__ = 'restructuredtext en'
 import os
 from functools import partial
 
-from PyQt5.Qt import (QComboBox, QLabel, QSpinBox, QDoubleSpinBox, QDateTimeEdit,
+from PyQt5.Qt import (QComboBox, QLabel, QSpinBox, QDoubleSpinBox,
         QDateTime, QGroupBox, QVBoxLayout, QSizePolicy, QGridLayout, QUrl,
         QSpacerItem, QIcon, QCheckBox, QWidget, QHBoxLayout, QLineEdit,
-        QPushButton, QMessageBox, QToolButton, Qt, QPlainTextEdit)
+        QPushButton, QMessageBox, QToolButton, QPlainTextEdit)
 
 from calibre.utils.date import qt_to_dt, now, as_local_time, as_utc, internal_iso_format_string
 from calibre.gui2.complete2 import EditWithComplete
@@ -23,7 +23,7 @@ from calibre.utils.config import tweaks
 from calibre.utils.icu import sort_key
 from calibre.library.comments import comments_to_html
 from calibre.gui2.library.delegates import ClearingDoubleSpinBox, ClearingSpinBox
-from calibre.gui2.widgets2 import RatingEditor
+from calibre.gui2.widgets2 import RatingEditor, DateTimeEdit as DateTimeEditBase
 from polyglot.builtins import unicode_type
 
 
@@ -164,12 +164,13 @@ class Bool(Base):
         l.addWidget(c)
         c.clicked.connect(self.set_to_no)
 
-        t = _('Clear')
-        c = QPushButton(t, parent)
-        width = c.fontMetrics().boundingRect(t).width() + 7
-        c.setMaximumWidth(width)
-        l.addWidget(c)
-        c.clicked.connect(self.set_to_cleared)
+        if self.db.prefs.get('bools_are_tristate'):
+            t = _('Clear')
+            c = QPushButton(t, parent)
+            width = c.fontMetrics().boundingRect(t).width() + 7
+            c.setMaximumWidth(width)
+            l.addWidget(c)
+            c.clicked.connect(self.set_to_cleared)
 
         c = QLabel('', parent)
         c.setMaximumWidth(1)
@@ -274,15 +275,15 @@ class Rating(Base):
         self.signals_to_disconnect.append(self.widgets[1].currentTextChanged)
 
 
-class DateTimeEdit(QDateTimeEdit):
+class DateTimeEdit(DateTimeEditBase):
 
     def focusInEvent(self, x):
         self.setSpecialValueText('')
-        QDateTimeEdit.focusInEvent(self, x)
+        DateTimeEditBase.focusInEvent(self, x)
 
     def focusOutEvent(self, x):
         self.setSpecialValueText(_('Undefined'))
-        QDateTimeEdit.focusOutEvent(self, x)
+        DateTimeEditBase.focusOutEvent(self, x)
 
     def set_to_today(self):
         self.setDateTime(now())
@@ -290,16 +291,6 @@ class DateTimeEdit(QDateTimeEdit):
     def set_to_clear(self):
         self.setDateTime(now())
         self.setDateTime(UNDEFINED_QDATETIME)
-
-    def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Minus:
-            ev.accept()
-            self.setDateTime(self.minimumDateTime())
-        elif ev.key() == Qt.Key_Equal:
-            ev.accept()
-            self.setDateTime(QDateTime.currentDateTime())
-        else:
-            return QDateTimeEdit.keyPressEvent(self, ev)
 
 
 class DateTime(Base):
@@ -416,7 +407,7 @@ class MultipleWidget(QWidget):
         self.tags_box = EditWithComplete(parent)
         layout.addWidget(self.tags_box, stretch=1000)
         self.editor_button = QToolButton(self)
-        self.editor_button.setToolTip(_('Open Item Editor'))
+        self.editor_button.setToolTip(_('Open item editor'))
         self.editor_button.setIcon(QIcon(I('chapters.png')))
         layout.addWidget(self.editor_button)
         self.setLayout(layout)
@@ -881,7 +872,7 @@ class BulkBase(Base):
         l.setStretchFactor(self.main_widget, 10)
         if add_tags_edit_button:
             self.edit_tags_button = QToolButton(parent)
-            self.edit_tags_button.setToolTip(_('Open Item Editor'))
+            self.edit_tags_button.setToolTip(_('Open item editor'))
             self.edit_tags_button.setIcon(QIcon(I('chapters.png')))
             l.addWidget(self.edit_tags_button)
         self.a_c_checkbox = QCheckBox(_('Apply changes'), w)
@@ -1272,7 +1263,7 @@ class RemoveTags(QWidget):
         self.tags_box.update_items_cache(values)
         layout.addWidget(self.tags_box, stretch=3)
         self.remove_tags_button = QToolButton(parent)
-        self.remove_tags_button.setToolTip(_('Open Item Editor'))
+        self.remove_tags_button.setToolTip(_('Open item editor'))
         self.remove_tags_button.setIcon(QIcon(I('chapters.png')))
         layout.addWidget(self.remove_tags_button)
         self.checkbox = QCheckBox(_('Remove all tags'), parent)

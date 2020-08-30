@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -32,9 +32,7 @@ class SortByAction(InterfaceAction):
     action_type = 'current'
     popup_type = QToolButton.InstantPopup
     action_add_menu = True
-    dont_add_to = frozenset([
-        'toolbar-device', 'context-menu-device', 'menubar', 'menubar-device',
-        'context-menu-cover-browser'])
+    dont_add_to = frozenset(('context-menu-cover-browser', ))
 
     def genesis(self):
         self.sorted_icon = QIcon(I('ok.png'))

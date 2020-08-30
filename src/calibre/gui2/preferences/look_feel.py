@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -127,7 +127,7 @@ class IdLinksRuleEdit(Dialog):
         self.l = l = QFormLayout(self)
         l.setFieldGrowthPolicy(l.AllNonFixedFieldsGrow)
         l.addRow(QLabel(_(
-            'The key of the identifier, for example, in isbn:XXX, the key is isbn')))
+            'The key of the identifier, for example, in isbn:XXX, the key is "isbn"')))
         self.key = k = QLineEdit(self)
         l.addRow(_('&Key:'), k)
         l.addRow(QLabel(_(
@@ -412,6 +412,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         r('row_numbers_in_book_list', gprefs)
         r('tag_browser_old_look', gprefs)
         r('tag_browser_hide_empty_categories', gprefs)
+        r('tag_browser_always_autocollapse', gprefs)
         r('tag_browser_show_tooltips', gprefs)
         r('bd_show_cover', gprefs)
         r('bd_overlay_cover_size', gprefs)

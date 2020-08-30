@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2012, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -82,6 +82,9 @@ class ImageView(QDialog):
         h.addWidget(i), h.addStretch(), h.addWidget(bb)
         if self.fit_image.isChecked():
             self.set_to_viewport_size()
+        geom = gprefs.get(self.geom_name)
+        if geom is not None:
+            self.restoreGeometry(geom)
 
     def set_to_viewport_size(self):
         page_size = self.scrollarea.size()
@@ -98,15 +101,24 @@ class ImageView(QDialog):
         if self.fit_image.isChecked():
             self.set_to_viewport_size()
 
+    def factor_from_fit(self):
+        scaled_height = self.label.size().height()
+        actual_height = self.current_img.size().height()
+        return scaled_height / actual_height
+
     def zoom_in(self):
         if self.fit_image.isChecked():
+            factor = self.factor_from_fit()
             self.fit_image.setChecked(False)
+            self.factor = factor
         self.factor *= 1.25
         self.adjust_image(1.25)
 
     def zoom_out(self):
         if self.fit_image.isChecked():
+            factor = self.factor_from_fit()
             self.fit_image.setChecked(False)
+            self.factor = factor
         self.factor *= 0.8
         self.adjust_image(0.8)
 

@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -281,9 +281,9 @@ def add_news(cache, path, arg, dbapi=None):
         if mi.series_index is None:
             mi.series_index = cache._get_next_series_num_for(mi.series)
         mi.tags = [_('News')]
-        if arg['add_title_tag']:
+        if arg.get('add_title_tag'):
             mi.tags += [arg['title']]
-        if arg['custom_tags']:
+        if arg.get('custom_tags'):
             mi.tags += arg['custom_tags']
         if mi.pubdate is None:
             mi.pubdate = utcnow()

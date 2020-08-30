@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -151,6 +151,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         if path != gprefs['auto_add_path']:
             if path:
                 path = os.path.abspath(path)
+                bname = os.path.basename(path)
                 self.opt_auto_add_path.setText(path)
                 if not os.path.isdir(path):
                     error_dialog(self, _('Invalid folder'),
@@ -163,7 +164,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
                             _('You do not have read/write permissions for '
                                 'the folder: %s')%path, show=True)
                     raise AbortCommit('invalid auto-add folder')
-                if os.path.basename(path)[0] in '._':
+                if bname and bname[0] in '._':
                     error_dialog(self, _('Invalid folder'),
                             _('Cannot use folders whose names start with a '
                                 'period or underscore: %s')%os.path.basename(path), show=True)

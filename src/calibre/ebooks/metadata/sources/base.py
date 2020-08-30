@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 from __future__ import absolute_import, division, print_function, unicode_literals
 
@@ -343,8 +343,8 @@ class Source(Plugin):
 
         if authors:
             # Leave ' in there for Irish names
-            remove_pat = re.compile(r'[!@#$%^&*(){}`~"\s\[\]/]')
-            replace_pat = re.compile(r'[-+.:;,]')
+            remove_pat = re.compile(r'[!@#$%^&*()（）「」{}`~"\s\[\]/]')
+            replace_pat = re.compile(r'[-+.:;,，。；：]')
             if only_first_author:
                 authors = authors[:1]
             for au in authors:
@@ -384,7 +384,7 @@ class Source(Plugin):
                 # Remove hyphens only if they have whitespace before them
                 (r'(\s-)', ' '),
                 # Replace other special chars with a space
-                (r'''[:,;!@$%^&*(){}.`~"\s\[\]/]''', ' '),
+                (r'''[:,;!@$%^&*(){}.`~"\s\[\]/]《》「」“”''', ' '),
             ]]
 
             for pat, repl in title_patterns:
@@ -545,7 +545,7 @@ class Source(Plugin):
     def identify(self, log, result_queue, abort, title=None, authors=None,
             identifiers={}, timeout=30):
         '''
-        Identify a book by its title/author/isbn/etc.
+        Identify a book by its Title/Author/ISBN/etc.
 
         If identifiers(s) are specified and no match is found and this metadata
         source does not store all related identifiers (for example, all ISBNs
@@ -563,7 +563,7 @@ class Source(Plugin):
         This integer will be used by :meth:`compare_identify_results`. If the
         order is unimportant, set it to zero for every result.
 
-        Make sure that any cover/isbn mapping information is cached before the
+        Make sure that any cover/ISBN mapping information is cached before the
         Metadata object is put into result_queue.
 
         :param log: A log object, use it to output debugging information/errors

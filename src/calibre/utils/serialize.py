@@ -1,11 +1,8 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2017, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
-
 from polyglot.builtins import unicode_type
-from calibre.constants import ispy3
 
 
 MSGPACK_MIME = 'application/x-msgpack'
@@ -110,7 +107,7 @@ def msgpack_decoder(code, data):
 def msgpack_loads(dump, use_list=True):
     # use_list controls whether msgpack arrays are unpacked as lists or tuples
     import msgpack
-    return msgpack.unpackb(dump, ext_hook=msgpack_decoder, raw=False, use_list=use_list)
+    return msgpack.unpackb(dump, ext_hook=msgpack_decoder, raw=False, use_list=use_list, strict_map_key=False)
 
 
 def json_loads(data):
@@ -118,22 +115,11 @@ def json_loads(data):
     return json.loads(data, object_hook=json_decoder)
 
 
-if ispy3:
+def pickle_dumps(data):
+    import pickle
+    return pickle.dumps(data, -1)
 
-    def pickle_dumps(data):
-        import pickle
-        return pickle.dumps(data, -1)
 
-    def pickle_loads(dump):
-        import pickle
-        return pickle.loads(dump, encoding='utf-8')
-
-else:
-
-    def pickle_dumps(data):
-        import cPickle as pickle
-        return pickle.dumps(data, -1)
-
-    def pickle_loads(dump):
-        import cPickle as pickle
-        return pickle.loads(dump)
+def pickle_loads(dump):
+    import pickle
+    return pickle.loads(dump, encoding='utf-8')

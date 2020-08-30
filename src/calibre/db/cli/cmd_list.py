@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2017, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import json
 import os
@@ -13,7 +12,7 @@ from calibre import prints
 from calibre.db.cli.utils import str_width
 from calibre.ebooks.metadata import authors_to_string
 from calibre.utils.date import isoformat
-from polyglot.builtins import iteritems, unicode_type, map
+from polyglot.builtins import as_bytes, iteritems, map, unicode_type
 
 readonly = True
 version = 0  # change this if you change signature of implementation()
@@ -204,6 +203,7 @@ def do_list(
     with ColoredStream(sys.stdout, fg='green'):
         prints(''.join(titles))
     stdout = getattr(sys.stdout, 'buffer', sys.stdout)
+    linesep = as_bytes(os.linesep)
 
     wrappers = [TextWrapper(x - 1).wrap if x > 1 else lambda y: y for x in widths]
 
@@ -214,12 +214,12 @@ def do_list(
         lines = max(map(len, text))
         for l in range(lines):
             for i, field in enumerate(text):
-                ft = text[i][l] if l < len(text[i]) else u''
+                ft = text[i][l] if l < len(text[i]) else ''
                 stdout.write(ft.encode('utf-8'))
                 if i < len(text) - 1:
-                    filler = (u'%*s' % (widths[i] - str_width(ft) - 1, u''))
+                    filler = ('%*s' % (widths[i] - str_width(ft) - 1, ''))
                     stdout.write((filler + separator).encode('utf-8'))
-            print()
+            stdout.write(linesep)
 
 
 def option_parser(get_parser, args):

@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -9,13 +9,13 @@ __docformat__ = 'restructuredtext en'
 import copy, traceback
 
 from calibre import prints
-from calibre.constants import DEBUG, ispy3
+from calibre.constants import DEBUG
 from calibre.ebooks.metadata.book import (SC_COPYABLE_FIELDS,
         SC_FIELDS_COPY_NOT_NULL, STANDARD_METADATA_FIELDS,
         TOP_LEVEL_IDENTIFIERS, ALL_METADATA_FIELDS)
 from calibre.library.field_metadata import FieldMetadata
 from calibre.utils.icu import sort_key
-from polyglot.builtins import iteritems, unicode_type, filter, map
+from polyglot.builtins import iteritems, unicode_type, filter, map, string_or_bytes
 
 # Special sets used to optimize the performance of getting and setting
 # attributes on Metadata objects
@@ -25,7 +25,10 @@ SIMPLE_SET = frozenset(SIMPLE_GET - {'identifiers'})
 
 def human_readable(size, precision=2):
     """ Convert a size in bytes into megabytes """
-    return ('%.'+unicode_type(precision)+'f'+ 'MB') % (size/(1024*1024),)
+    ans = size/(1024*1024)
+    if ans < 0.1:
+        return '<0.1MB'
+    return ('%.'+unicode_type(precision)+'f'+ 'MB') % ans
 
 
 NULL_VALUES = {
@@ -433,6 +436,19 @@ class Metadata(object):
             _data = object.__getattribute__(self, '_data')
             _data['user_metadata'][field] = m
 
+    def remove_stale_user_metadata(self, other_mi):
+        '''
+        Remove user metadata keys (custom column keys) if they
+        don't exist in 'other_mi', which must be a metadata object
+        '''
+        me = self.get_all_user_metadata(make_copy=False)
+        other = set(other_mi.custom_field_keys())
+        new = {}
+        for k,v in me.items():
+            if k in other:
+                new[k] = v
+        self.set_all_user_metadata(new)
+
     def template_to_attribute(self, other, ops):
         '''
         Takes a list [(src,dest), (src,dest)], evaluates the template in the
@@ -544,6 +560,8 @@ class Metadata(object):
                     meta = other.get_user_metadata(x, make_copy=True)
                     if meta is not None:
                         self_tags = self.get(x, [])
+                        if isinstance(self_tags, string_or_bytes):
+                            self_tags = []
                         self.set_user_metadata(x, meta)  # get... did the deepcopy
                         other_tags = other.get(x, [])
                         if meta['datatype'] == 'text' and meta['is_multiple']:
@@ -775,7 +793,7 @@ class Metadata(object):
         ans += [('ISBN', unicode_type(self.isbn))]
         ans += [(_('Tags'), ', '.join([unicode_type(t) for t in self.tags]))]
         if self.series:
-            ans += [(_('Series'), unicode_type(self.series) + ' #%s'%self.format_series_index())]
+            ans += [(ngettext('Series', 'Series', 1), unicode_type(self.series) + ' #%s'%self.format_series_index())]
         ans += [(_('Languages'), ', '.join(self.languages))]
         if self.timestamp is not None:
             ans += [(_('Timestamp'), unicode_type(isoformat(self.timestamp, as_utc=False, sep=' ')))]
@@ -792,13 +810,7 @@ class Metadata(object):
             ans[i] = '<tr><td><b>%s</b></td><td>%s</td></tr>'%x
         return '<table>%s</table>'%'\n'.join(ans)
 
-    if ispy3:
-        __str__ = __unicode__representation__
-    else:
-        __unicode__ = __unicode__representation__
-
-        def __str__(self):
-            return self.__unicode__().encode('utf-8')
+    __str__ = __unicode__representation__
 
     def __nonzero__(self):
         return bool(self.title or self.author or self.comments or self.tags)
@@ -817,8 +829,12 @@ def field_from_string(field, raw, field_metadata):
     elif dt == 'rating':
         val = float(raw) * 2
     elif dt == 'datetime':
-        from calibre.utils.date import parse_only_date
-        val = parse_only_date(raw)
+        from calibre.utils.iso8601 import parse_iso8601
+        try:
+            val = parse_iso8601(raw, require_aware=True)
+        except Exception:
+            from calibre.utils.date import parse_only_date
+            val = parse_only_date(raw)
     elif dt == 'bool':
         if raw.lower() in {'true', 'yes', 'y'}:
             val = True

@@ -1,9 +1,9 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPL v3 Copyright: 2019, Kovid Goyal <kovid at kovidgoyal.net>
 
 # Imports {{{
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import copy
 import json
@@ -18,7 +18,7 @@ from operator import attrgetter, itemgetter
 
 from html5_parser import parse
 from PyQt5.Qt import (
-    QApplication, QMarginsF, QObject, QPageLayout, QTimer, QUrl, pyqtSignal
+    QApplication, QMarginsF, QObject, QPageLayout, Qt, QTimer, QUrl, pyqtSignal
 )
 from PyQt5.QtWebEngineCore import QWebEngineUrlRequestInterceptor
 from PyQt5.QtWebEngineWidgets import QWebEnginePage, QWebEngineProfile
@@ -39,6 +39,7 @@ from calibre.srv.render_book import check_for_maths
 from calibre.utils.fonts.sfnt.container import Sfnt, UnsupportedFont
 from calibre.utils.fonts.sfnt.merge import merge_truetype_fonts_for_pdf
 from calibre.utils.logging import default_log
+from calibre.utils.monotonic import monotonic
 from calibre.utils.podofo import (
     dedup_type3_fonts, get_podofo, remove_unused_fonts, set_metadata_implementation
 )
@@ -49,6 +50,7 @@ from polyglot.builtins import (
 from polyglot.urllib import urlparse
 
 OK, KILL_SIGNAL = range(0, 2)
+HANG_TIME = 60  # seconds
 # }}}
 
 
@@ -172,10 +174,26 @@ class Renderer(QWebEnginePage):
 
         self.titleChanged.connect(self.title_changed)
         self.loadStarted.connect(self.load_started)
+        self.loadProgress.connect(self.load_progress)
         self.loadFinished.connect(self.load_finished)
+        self.load_hang_check_timer = t = QTimer(self)
+        self.load_started_at = 0
+        t.setTimerType(Qt.VeryCoarseTimer)
+        t.setInterval(HANG_TIME * 1000)
+        t.setSingleShot(True)
+        t.timeout.connect(self.on_load_hang)
 
     def load_started(self):
+        self.load_started_at = monotonic()
         self.load_complete = False
+        self.load_hang_check_timer.start()
+
+    def load_progress(self, amt):
+        self.load_hang_check_timer.start()
+
+    def on_load_hang(self):
+        self.log(self.log_prefix, 'Loading not complete after {} seconds, aborting.'.format(int(monotonic() - self.load_started_at)))
+        self.load_finished(False)
 
     def title_changed(self, title):
         if self.wait_for_title and title == self.wait_for_title and self.load_complete:
@@ -187,6 +205,7 @@ class Renderer(QWebEnginePage):
 
     def load_finished(self, ok):
         self.load_complete = True
+        self.load_hang_check_timer.stop()
         if not ok:
             self.working = False
             self.work_done.emit(self, 'Load of {} failed'.format(self.url().toString()))
@@ -900,7 +919,7 @@ def fonts_are_identical(fonts):
     return True
 
 
-def merge_font(fonts):
+def merge_font(fonts, log):
     # choose the largest font as the base font
     fonts.sort(key=lambda f: len(f['Data'] or b''), reverse=True)
     base_font = fonts[0]
@@ -913,7 +932,7 @@ def merge_font(fonts):
     cmaps = list(filter(None, (f['ToUnicode'] for f in t0_fonts)))
     if cmaps:
         t0_font['ToUnicode'] = as_bytes(merge_cmaps(cmaps))
-    base_font['sfnt'], width_for_glyph_id, height_for_glyph_id = merge_truetype_fonts_for_pdf(*(f['sfnt'] for f in descendant_fonts))
+    base_font['sfnt'], width_for_glyph_id, height_for_glyph_id = merge_truetype_fonts_for_pdf(tuple(f['sfnt'] for f in descendant_fonts), log)
     widths = []
     arrays = tuple(filter(None, (f['W'] for f in descendant_fonts)))
     if arrays:
@@ -928,7 +947,7 @@ def merge_font(fonts):
     return t0_font, base_font, references_to_drop
 
 
-def merge_fonts(pdf_doc):
+def merge_fonts(pdf_doc, log):
     all_fonts = pdf_doc.list_fonts(True)
     base_font_map = {}
 
@@ -957,7 +976,7 @@ def merge_fonts(pdf_doc):
     items = []
     for name, fonts in iteritems(base_font_map):
         if mergeable(fonts):
-            t0_font, base_font, references_to_drop = merge_font(fonts)
+            t0_font, base_font, references_to_drop = merge_font(fonts, log)
             for ref in references_to_drop:
                 replacements[ref] = t0_font['Reference']
             data = base_font['sfnt']()[0]
@@ -1038,16 +1057,49 @@ def add_header_footer(manager, opts, pdf_doc, container, page_number_display_map
             ans.append(current)
         return ans
 
+    def page_counts_map(iterator):
+        pagenums = []
+        for level, child in iterator:
+            pdf_loc = getattr(child, 'pdf_loc', None)
+            if pdf_loc is not None and pdf_loc.pagenum > 0:
+                pagenums.append(pdf_loc.pagenum)
+        stack = []
+        for i, pagenum in enumerate(pagenums):
+            next_page_num = pagenums[i + 1] if i + 1 < len(pagenums) else (pdf_doc.page_count() + 1)
+            stack.append((pagenum, next_page_num - pagenum))
+        totals = []
+        section_nums = []
+        stack_len = len(stack)
+        stack_pos = 0
+        current, page_for_current, counter = 0, -1, 0
+        for page in range(1, pdf_doc.page_count() + 1):
+            while stack_pos < stack_len:
+                pagenum, pages = stack[stack_pos]
+                if pagenum != page:
+                    break
+                if pagenum != page_for_current:
+                    current = pages
+                    page_for_current = pagenum
+                    counter = 0
+                stack_pos += 1
+            counter += 1
+            totals.append(current)
+            section_nums.append(counter)
+        return totals, section_nums
+
     if toc is None:
         page_toc_map = stack_to_map(())
         toplevel_toc_map = stack_to_map(())
+        toplevel_pagenum_map, toplevel_pages_map = page_counts_map(())
     else:
         page_toc_map = stack_to_map(create_toc_stack(toc.iterdescendants(level=0)))
 
         def tc():
             for x in toc:
                 yield 0, x
+
         toplevel_toc_map = stack_to_map(create_toc_stack(tc()))
+        toplevel_pagenum_map, toplevel_pages_map = page_counts_map(tc())
 
     def create_container(page_num, margins):
         style = {
@@ -1071,6 +1123,9 @@ def add_header_footer(manager, opts, pdf_doc, container, page_number_display_map
         return ans
 
     def format_template(template, page_num, height):
+        template = template.replace('_TOP_LEVEL_SECTION_PAGES_', unicode_type(toplevel_pagenum_map[page_num - 1]))
+        template = template.replace('_TOP_LEVEL_SECTION_PAGENUM_', unicode_type(toplevel_pages_map[page_num - 1]))
+        template = template.replace('_TOTAL_PAGES_', unicode_type(pages_in_doc))
         template = template.replace('_PAGENUM_', unicode_type(page_number_display_map[page_num]))
         template = template.replace('_TITLE_', prepare_string_for_xml(pdf_metadata.title, True))
         template = template.replace('_AUTHOR_', prepare_string_for_xml(pdf_metadata.author, True))
@@ -1091,7 +1146,9 @@ def add_header_footer(manager, opts, pdf_doc, container, page_number_display_map
                 child.set('style', style + '; display: none')
         return ans
 
-    for page_num in range(1, pdf_doc.page_count() + 1):
+    pages_in_doc = pdf_doc.page_count()
+
+    for page_num in range(1, pages_in_doc + 1):
         margins = page_margins_map[page_num - 1]
         div = create_container(page_num, margins)
         body.append(div)
@@ -1227,7 +1284,7 @@ def convert(opf_path, opts, metadata=None, output_path=None, log=default_log, co
         page_number_display_map, page_layout, page_margins_map,
         pdf_metadata, report_progress, toc if has_toc else None)
 
-    merge_fonts(pdf_doc)
+    merge_fonts(pdf_doc, log)
     num_removed = dedup_type3_fonts(pdf_doc)
     if num_removed:
         log('Removed', num_removed, 'duplicated Type3 glyphs')

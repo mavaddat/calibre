@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -9,7 +9,7 @@ __docformat__ = 'restructuredtext en'
 import functools
 
 from PyQt5.Qt import (
-    QAction, QApplication, QFont, QIcon, QLabel, QMenu, QPainter, QSizePolicy,
+    QAction, QApplication, QIcon, QLabel, QMenu, QPainter, QSizePolicy,
     QSplitter, QStackedWidget, QStatusBar, QStyle, QStyleOption, Qt, QTabBar, QTimer,
     QToolButton, QVBoxLayout, QWidget
 )
@@ -271,11 +271,7 @@ class StatusBar(QStatusBar):  # {{{
         self.total = self.current = self.selected = self.library_total = 0
         self.addPermanentWidget(self.update_label)
         self.update_label.setVisible(False)
-        self._font = QFont()
-        self._font.setBold(True)
-        self.setFont(self._font)
         self.defmsg = VersionLabel(self)
-        self.defmsg.setFont(self._font)
         self.addWidget(self.defmsg)
         self.set_label()
 
@@ -405,19 +401,18 @@ class VLTabs(QTabBar):  # {{{
         self.currentChanged.connect(self.tab_changed)
         self.tabMoved.connect(self.tab_moved, type=Qt.QueuedConnection)
         self.tabCloseRequested.connect(self.tab_close)
-        self.setStyleSheet('QTabBar::tab:selected { font-weight: bold } QTabBar::tab { text-align: center }')
         self.setVisible(gprefs['show_vl_tabs'])
         self.next_action = a = QAction(self)
         a.triggered.connect(partial(self.next_tab, delta=1)), self.gui.addAction(a)
         self.previous_action = a = QAction(self)
         a.triggered.connect(partial(self.next_tab, delta=-1)), self.gui.addAction(a)
         self.gui.keyboard.register_shortcut(
-            'virtual-library-tab-bar-next', _('Next virtual library'), action=self.next_action,
+            'virtual-library-tab-bar-next', _('Next Virtual library'), action=self.next_action,
             default_keys=('Ctrl+Right',),
             description=_('Switch to the next Virtual library in the Virtual library tab bar')
         )
         self.gui.keyboard.register_shortcut(
-            'virtual-library-tab-bar-previous', _('Previous virtual library'), action=self.previous_action,
+            'virtual-library-tab-bar-previous', _('Previous Virtual library'), action=self.previous_action,
             default_keys=('Ctrl+Left',),
             description=_('Switch to the previous Virtual library in the Virtual library tab bar')
         )
@@ -501,7 +496,7 @@ class VLTabs(QTabBar):  # {{{
             self.addTab(vl.replace('&', '&&') or _('All books'))
             sexp = vl_map.get(vl, None)
             if sexp is not None:
-                self.setTabToolTip(i, _('Search expression for this virtual library:') + '\n\n' + sexp)
+                self.setTabToolTip(i, _('Search expression for this Virtual library:') + '\n\n' + sexp)
             self.setTabData(i, vl)
             if vl == current_lib:
                 current_idx = i
@@ -531,11 +526,11 @@ class VLTabs(QTabBar):  # {{{
             s = m._s = m.addMenu(_('Restore hidden tabs'))
             for x in hidden:
                 s.addAction(x, partial(self.restore, x))
-        m.addAction(_('Hide virtual library tabs'), self.disable_bar)
+        m.addAction(_('Hide Virtual library tabs'), self.disable_bar)
         if gprefs['vl_tabs_closable']:
-            m.addAction(_('Lock virtual library tabs'), self.lock_tab)
+            m.addAction(_('Lock Virtual library tabs'), self.lock_tab)
         else:
-            m.addAction(_('Unlock virtual library tabs'), self.unlock_tab)
+            m.addAction(_('Unlock Virtual library tabs'), self.unlock_tab)
         i = self.tabAt(ev.pos())
         if i > -1:
             vl = unicode_type(self.tabData(i) or '')
@@ -682,6 +677,7 @@ class LayoutMixin(object):  # {{{
         self.book_details.view_device_book.connect(
                 self.iactions['View'].view_device_book)
         self.book_details.manage_category.connect(self.manage_category_triggerred)
+        self.book_details.find_in_tag_browser.connect(self.find_in_tag_browser_triggered)
         self.book_details.edit_identifiers.connect(self.edit_identifiers_triggerred)
         self.book_details.compare_specific_format.connect(self.compare_format)
 
@@ -706,9 +702,17 @@ class LayoutMixin(object):  # {{{
     def manage_category_triggerred(self, field, value):
         if field and value:
             if field == 'authors':
-                self.do_author_sort_edit(self, value, select_sort=False, select_link=False)
+                self.do_author_sort_edit(self, value, select_sort=False,
+                                         select_link=False, lookup_author=True)
             elif field:
                 self.do_tags_list_edit(value, field)
+
+    def find_in_tag_browser_triggered(self, field, value):
+        if field and value:
+            tb = self.stack.tb_widget
+            tb.set_focus_to_find_box()
+            tb.item_search.lineEdit().setText(field + ':=' + value)
+            tb.do_find()
 
     def toggle_grid_view(self, show):
         self.library_view.alternate_views.show_view('grid' if show else None)

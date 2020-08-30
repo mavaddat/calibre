@@ -1,12 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2015, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import print_function, unicode_literals
 from polyglot.builtins import map, unicode_type, environ_item, hasenv, getenv, as_unicode, native_string_type
 import sys, locale, codecs, os, importlib, collections
 
 __appname__   = 'calibre'
-numeric_version = (4, 10, 1)
+numeric_version = (4, 99, 12)
 __version__   = '.'.join(map(unicode_type, numeric_version))
 git_version   = None
 __author__    = "Kovid Goyal <kovid@kovidgoyal.net>"
@@ -152,8 +151,6 @@ def cache_dir():
 
 
 plugins_loc = sys.extensions_location
-if ispy3:
-    plugins_loc = os.path.join(plugins_loc, '3')
 
 
 # plugins {{{
@@ -170,7 +167,6 @@ class Plugins(collections.Mapping):
                 'podofo',
                 'cPalmdoc',
                 'progress_indicator',
-                'chmlib',
                 'icu',
                 'speedup',
                 'html_as_json',
@@ -185,13 +181,7 @@ class Plugins(collections.Mapping):
                 'matcher',
                 'tokenizer',
                 'certgen',
-                'lzma_binding',
             ]
-        if not ispy3:
-            plugins.extend([
-                'monotonic',
-                'zlib2',
-            ])
         if iswindows:
             plugins.extend(['winutil', 'wpd', 'winfonts'])
         if isosx:
@@ -289,6 +279,7 @@ else:
 dv = getenv('CALIBRE_DEVELOP_FROM')
 is_running_from_develop = bool(getattr(sys, 'frozen', False) and dv and os.path.abspath(dv) in sys.path)
 del dv
+in_develop_mode = getenv('CALIBRE_ENABLE_DEVELOP_MODE') == '1'
 
 
 def get_version():

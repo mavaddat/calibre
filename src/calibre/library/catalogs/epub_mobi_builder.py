@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2010, Greg Riker
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import datetime
 import os
@@ -349,7 +349,7 @@ class CatalogBuilder(object):
         if self.opts.generate_titles:
             self.generate_ncx_by_title(_("Titles"))
         if self.opts.generate_series:
-            self.generate_ncx_by_series(_("Series"))
+            self.generate_ncx_by_series(ngettext('Series', 'Series', 2))
         if self.opts.generate_genres:
             self.generate_ncx_by_genre(_("Genres"))
         if self.opts.generate_recently_added:
@@ -2354,7 +2354,7 @@ class CatalogBuilder(object):
          content/BySeries.html (file)
 
         """
-        friendly_name = _("Series")
+        friendly_name = ngettext('Series', 'Series', 2)
         self.update_progress_full_step("%s HTML" % friendly_name)
 
         self.opts.sort_by = 'series'

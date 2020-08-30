@@ -1,6 +1,6 @@
 # calibre
 
-<img align="left" src="resources/images/lt.png?raw=true" height="200" width="200"/>
+<img align="left" src="https://raw.githubusercontent.com/kovidgoyal/calibre/master/resources/images/lt.png" height="200" width="200"/>
 
 calibre is an e-book manager. It can view, convert, edit and catalog e-books 
 in all of the major e-book formats. It can also talk to e-book reader 
@@ -10,7 +10,7 @@ reading. It is cross platform, running on Linux, Windows and macOS.
 
 For more information, see the [calibre About page](https://calibre-ebook.com/about)
 
-[![Build Status](https://github.com/kovidgoyal/calibre/workflows/Continuous%20Integration/badge.svg)](https://github.com/kovidgoyal/calibre/actions?workflow=Continuous+Integration)
+[![Build Status](https://github.com/kovidgoyal/calibre/workflows/Continuous%20Integration/badge.svg)](https://github.com/kovidgoyal/calibre/actions?query=workflow%3ACI)
 
 ## Screenshots  
 

@@ -35,7 +35,7 @@ You can access the viewer controls by either:
 
   - Right clicking on the text
   - Pressing the :kbd:`Esc` or :kbd:`Menu` keys
-  - On a touchscreen by tapping the top 1/3rd or the screen
+  - On a touchscreen by tapping the top 1/3rd of the screen
 
 
 The viewer has two modes, "paged" and "flow". In paged mode the book content
@@ -66,6 +66,7 @@ pressing the :guilabel:`Table of Contents` button.  This will bring up a list
 of sections in the book. You can click on any of them to jump to that portion
 of the book.
 
+
 Navigating by location
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -95,6 +96,31 @@ You can use this number to unambiguously refer to parts of the books when
 discussing it with friends or referring to it in other works. You can enter
 these numbers in the :guilabel:`Go to function` to navigate to a particular
 reference location.
+
+
+Highlighting text
+----------------------
+
+When you select text in the viewer, a little popup bar appears next to the
+selection. You can click the highlight button in that bar to create a
+highlight. You can add notes and change the color of the highlight. On a touch
+screen, long tap a word to select it and show the popup bar. Once in highlight
+mode you can tap the :guilabel:`Adjust selection` button to change what text is
+selected using touch screen friendly selection handles.  Drag
+the handles to the top or bottom margins to scroll while selecting.
+
+You can use the :guilabel:`Browse highlights` button in the viewer
+controls to show a separate panel with a list of all highlights in the book.
+
+You can browse *all highlights* in your entire calibre library by going to
+:guilabel:`Preferences->Toolbars` in calibre and adding the :guilabel:`Browse
+annotations` tool to the toolbar.
+
+Finally, if you use the calibre Content server's in browser viewer, you can
+have the viewer sync its annotations with the browser viewer by going to
+:guilabel:`Preferences->Miscellaneous` in the viewer preferences and entering
+the username of the Content server viewer to sync with. Use the special value
+``*`` to sync with anonymous users.
 
 
 Customizing the look and feel of your reading experience
@@ -135,6 +161,14 @@ Copying text and images
 You can select text and images by dragging the content with your mouse and then
 right clicking and selecting :guilabel:`Copy` to copy to the clipboard.  The copied
 material can be pasted into another application as plain text and images.
+
+
+Zooming in on images
+----------------------------
+
+You can zoom in to show an image at full size in a separate window by either
+double clicking or long tapping on it. You can also right click on it and
+choose :guilabel:`View image`.
 
 
 Non re-flowable content

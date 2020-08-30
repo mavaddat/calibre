@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPL v3 Copyright: 2019, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import os
 from functools import partial
@@ -15,8 +14,9 @@ from PyQt5.QtWebEngineWidgets import QWebEnginePage
 
 from calibre.constants import isosx
 from calibre.gui2 import elided_text
+from calibre.gui2.viewer.config import get_session_pref
 from calibre.gui2.viewer.shortcuts import index_to_key_sequence
-from calibre.gui2.viewer.web_view import get_session_pref, set_book_path, vprefs
+from calibre.gui2.viewer.web_view import set_book_path, vprefs
 from calibre.gui2.widgets2 import Dialog
 from calibre.utils.icu import primary_sort_key
 from polyglot.builtins import iteritems
@@ -39,7 +39,7 @@ class Actions(object):
 
 def all_actions():
     if not hasattr(all_actions, 'ans'):
-        all_actions.ans = Actions({
+        amap = {
             'color_scheme': Action('format-fill-color.png', _('Switch color scheme')),
             'back': Action('back.png', _('Back')),
             'forward': Action('forward.png', _('Forward')),
@@ -59,19 +59,22 @@ def all_actions():
             'reference': Action('reference.png', _('Toggle Reference mode'), 'toggle_reference_mode'),
             'autoscroll': Action('auto-scroll.png', _('Toggle auto-scrolling'), 'toggle_autoscroll'),
             'lookup': Action('generic-library.png', _('Lookup words'), 'toggle_lookup'),
-            'chrome': Action('tweaks.png', _('Show viewer controls'), 'show_chrome'),
+            'chrome': Action('tweaks.png', _('Show viewer controls'), 'show_chrome_force'),
             'mode': Action('scroll.png', _('Toggle paged mode'), 'toggle_paged_mode'),
             'print': Action('print.png', _('Print book'), 'print'),
             'preferences': Action('config.png', _('Preferences'), 'preferences'),
             'metadata': Action('metadata.png', _('Show book metadata'), 'metadata'),
-        })
+            'highlight': Action('highlight.png', _('Highlight text in the book'), 'create_annotation'),
+            'toggle_highlights': Action('highlight_only_on.png', _('Browse highlights in book'), 'toggle_highlights'),
+        }
+        all_actions.ans = Actions(amap)
     return all_actions.ans
 
 
 DEFAULT_ACTIONS = (
-        'back', 'forward', None, 'open', 'copy', 'increase_font_size', 'decrease_font_size', 'fullscreen', 'color_scheme',
-        None, 'previous', 'next', None, 'toc', 'search', 'bookmarks', 'lookup', 'reference', 'chrome', None, 'mode', 'print', 'preferences',
-        'metadata', 'inspector'
+    'back', 'forward', None, 'open', 'copy', 'increase_font_size', 'decrease_font_size', 'fullscreen', 'color_scheme',
+    None, 'previous', 'next', None, 'toc', 'search', 'bookmarks', 'lookup', 'highlight', 'chrome', None,
+    'mode', 'print', 'preferences', 'metadata', 'inspector'
 )
 
 
@@ -86,6 +89,7 @@ class ToolBar(QToolBar):
 
     def __init__(self, parent=None):
         QToolBar.__init__(self, parent)
+        self.setWindowTitle(_('Toolbar'))
         self.shortcut_actions = {}
         self.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.setVisible(False)
@@ -166,6 +170,9 @@ class ActionsToolBar(ToolBar):
         a.setCheckable(True)
         self.reference_action = a = shortcut_action('reference')
         a.setCheckable(True)
+        self.highlight_action = a = shortcut_action('highlight')
+        self.toggle_highlights_action = self.highlights_action = a = shortcut_action('toggle_highlights')
+        a.setCheckable(True)
         self.lookup_action = a = shortcut_action('lookup')
         a.setCheckable(True)
         self.inspector_action = a = shortcut_action('inspector')
@@ -222,7 +229,7 @@ class ActionsToolBar(ToolBar):
         self.reference_action.setChecked(enabled)
 
     def update_dock_actions(self, visibility_map):
-        for k in ('toc', 'bookmarks', 'lookup', 'inspector'):
+        for k in ('toc', 'bookmarks', 'lookup', 'inspector', 'highlights'):
             ac = getattr(self, '{}_action'.format(k))
             ac.setChecked(visibility_map[k])
 
@@ -250,7 +257,7 @@ class ActionsToolBar(ToolBar):
                     path = os.path.abspath(entry['pathtoebook'])
                 except Exception:
                     continue
-                if path == os.path.abspath(set_book_path.pathtoebook):
+                if hasattr(set_book_path, 'pathtoebook') and path == os.path.abspath(set_book_path.pathtoebook):
                     continue
                 m.addAction('{}\t {}'.format(
                     elided_text(entry['title'], pos='right', width=250),

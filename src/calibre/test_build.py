@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -12,7 +12,7 @@ Test a binary calibre build to ensure that all needed binary images/libraries ha
 
 import os, ctypes, sys, unittest, time
 
-from calibre.constants import plugins, iswindows, islinux, isosx, ispy3, plugins_loc
+from calibre.constants import plugins, iswindows, islinux, isosx, plugins_loc
 from polyglot.builtins import iteritems, map, unicode_type, getenv, native_string_type
 
 is_ci = os.environ.get('CI', '').lower() == 'true'
@@ -30,6 +30,8 @@ class BuildTest(unittest.TestCase):
                     ctypes.WinDLL(native_string_type(os.path.join(base, x)))
                 except Exception as err:
                     self.assertTrue(False, 'Failed to load DLL %s with error: %s' % (x, err))
+        from Crypto.Cipher import AES
+        del AES
 
     @unittest.skipUnless(islinux, 'DBUS only used on linux')
     def test_dbus(self):
@@ -50,6 +52,10 @@ class BuildTest(unittest.TestCase):
         from calibre.spell.dictionary import build_test
         build_test()
 
+    def test_pychm(self):
+        from chm.chm import CHMFile, chmlib
+        del CHMFile, chmlib
+
     def test_chardet(self):
         from chardet import detect
         raw = 'mūsi Füße'.encode('utf-8')
@@ -65,8 +71,8 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(detector.result['encoding'], 'utf-8')
 
     def test_lzma(self):
-        from calibre_lzma.xz import test_lzma2
-        test_lzma2()
+        import lzma
+        lzma.open
 
     def test_html5lib(self):
         import html5lib.html5parser  # noqa
@@ -81,11 +87,7 @@ class BuildTest(unittest.TestCase):
         del soupsieve, bs4
 
     def test_zeroconf(self):
-        if ispy3:
-            import zeroconf as z, ifaddr
-        else:
-            import calibre.utils.Zeroconf as z
-            ifaddr = None
+        import zeroconf as z, ifaddr
         del z
         del ifaddr
 
@@ -163,6 +165,8 @@ class BuildTest(unittest.TestCase):
         for fmt in (fmt, fmt.encode('ascii')):
             x = strftime(fmt, t)
             au(x, 'strftime')
+            if isinstance(fmt, bytes):
+                fmt = fmt.decode('ascii')
             self.assertEqual(unicode_type(time.strftime(fmt.replace('%e', '%#d'), t)), x)
 
     def test_sqlite(self):
@@ -334,6 +338,25 @@ class BuildTest(unittest.TestCase):
             cafile = ssl.get_default_verify_paths().cafile
             if not cafile or not cafile.endswith('/mozilla-ca-certs.pem') or not os.access(cafile, os.R_OK):
                 raise AssertionError('Mozilla CA certs not loaded')
+
+
+def test_multiprocessing():
+    from multiprocessing import get_context, get_all_start_methods
+    for stype in get_all_start_methods():
+        if stype == 'fork':
+            continue
+        ctx = get_context(stype)
+        q = ctx.Queue()
+        arg = 'hello'
+        p = ctx.Process(target=q.put, args=(arg,))
+        p.start()
+        try:
+            x = q.get(timeout=2)
+        except Exception:
+            raise SystemExit(f'Failed to get response from worker process with spawn_type: {stype}')
+        if x != arg:
+            raise SystemExit(f'{x!r} != {arg!r} with spawn_type: {stype}')
+        p.join()
 
 
 def find_tests():

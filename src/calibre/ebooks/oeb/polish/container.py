@@ -1,7 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
 # License: GPLv3 Copyright: 2013, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 import errno
 import hashlib
@@ -253,6 +253,10 @@ class Container(ContainerBase):  # {{{
     SUPPORTS_TITLEPAGES = True
     SUPPORTS_FILENAMES = True
 
+    @property
+    def book_type_for_display(self):
+        return self.book_type.upper()
+
     def __init__(self, rootpath, opfpath, log, clone_data=None):
         ContainerBase.__init__(self, log)
         self.root = clone_data['root'] if clone_data is not None else os.path.abspath(rootpath)
@@ -296,9 +300,10 @@ class Container(ContainerBase):  # {{{
         for item in self.opf_xpath('//opf:manifest/opf:item[@href and @media-type]'):
             href = item.get('href')
             name = self.href_to_name(href, self.opf_name)
-            if name in self.mime_map and name != self.opf_name:
+            mt = item.get('media-type')
+            if name in self.mime_map and name != self.opf_name and mt:
                 # some epubs include the opf in the manifest with an incorrect mime type
-                self.mime_map[name] = item.get('media-type')
+                self.mime_map[name] = mt
 
     def data_for_clone(self, dest_dir=None):
         dest_dir = dest_dir or self.root
@@ -598,7 +603,7 @@ class Container(ContainerBase):  # {{{
         '''
         Return the raw data corresponding to the file specified by name
 
-        :param decode: If True and the file has a text based mimetype, decode it and return a unicode object instead of raw bytes.
+        :param decode: If True and the file has a text based MIME type, decode it and return a unicode object instead of raw bytes.
         :param normalize_to_nfc: If True the returned unicode object is normalized to the NFC normal form as is required for the EPUB and AZW3 file formats.
         '''
         ans = self.open(name).read()
@@ -1117,6 +1122,26 @@ def walk_dir(basedir):
 class EpubContainer(Container):
 
     book_type = 'epub'
+
+    @property
+    def book_type_for_display(self):
+        ans = self.book_type.upper()
+        try:
+            v = self.opf_version_parsed
+        except Exception:
+            pass
+        else:
+            try:
+                if v.major == 2:
+                    ans += ' 2'
+                else:
+                    if not v.minor:
+                        ans += ' {}'.format(v.major)
+                    else:
+                        ans += ' {}.{}'.format(v.major, v.minor)
+            except Exception:
+                pass
+        return ans
 
     META_INF = {
             'container.xml': True,

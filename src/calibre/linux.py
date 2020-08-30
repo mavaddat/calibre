@@ -1,8 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 # License: GPLv3 Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>
-
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 ''' Post installation script for linux '''
 
@@ -11,7 +9,7 @@ from subprocess import check_call, check_output
 from functools import partial
 
 from calibre import __appname__, prints, guess_type
-from calibre.constants import islinux, isbsd, ispy3
+from calibre.constants import islinux, isbsd
 from calibre.customize.ui import all_input_formats
 from calibre.ptempfile import TemporaryDirectory
 from calibre import CurrentDir
@@ -24,7 +22,7 @@ entry_points = {
              'ebook-meta           = calibre.ebooks.metadata.cli:main',
              'ebook-convert        = calibre.ebooks.conversion.cli:main',
              'ebook-polish         = calibre.ebooks.oeb.polish.main:main',
-             'markdown-calibre     = calibre.ebooks.markdown.__main__:run',
+             'markdown-calibre     = markdown.__main__:run',
              'web2disk             = calibre.web.fetch.simple:main',
              'calibre-server       = calibre.srv.standalone:main',
              'lrf2lrs              = calibre.ebooks.lrf.lrfparser:main',
@@ -105,17 +103,64 @@ class PreserveMIMEDefaults(object):  # {{{
 
 
 UNINSTALL = '''\
+#!/bin/sh
+# Copyright (C) 2018 Kovid Goyal <kovid at kovidgoyal.net>
+
+search_for_python() {{
+    # We have to search for python as Ubuntu, in its infinite wisdom decided
+    # to release 18.04 with no python symlink, making it impossible to run polyglot
+    # python scripts.
+
+    # We cannot use command -v as it is not implemented in the posh shell shipped with
+    # Ubuntu/Debian. Similarly, there is no guarantee that which is installed.
+    # Shell scripting is a horrible joke, thank heavens for python.
+    local IFS=:
+    if [ $ZSH_VERSION ]; then
+        # zsh does not split by default
+        setopt sh_word_split
+    fi
+    local candidate_path
+    local candidate_python
+    local pythons=python3:python2
+    # disable pathname expansion (globbing)
+    set -f
+    for candidate_path in $PATH
+    do
+        if [ ! -z $candidate_path ]
+        then
+            for candidate_python in $pythons
+            do
+                if [ ! -z "$candidate_path" ]
+                then
+                    if [ -x "$candidate_path/$candidate_python" ]
+                    then
+                        printf "$candidate_path/$candidate_python"
+                        return
+                    fi
+                fi
+            done
+        fi
+    done
+    set +f
+    printf "python"
+}}
+
+PYTHON=$(search_for_python)
+echo Using python executable: $PYTHON
+
+$PYTHON -c "import sys; exec(sys.stdin.read());" "$0" <<'CALIBRE_LINUX_INSTALLER_HEREDOC'
 #!{python}
-# vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
+# vim:fileencoding=UTF-8
 from __future__ import print_function, unicode_literals
 euid = {euid}
 
-import os, subprocess, shutil, tempfile
+import os, subprocess, shutil, tempfile, sys
 
 try:
     raw_input
 except NameError:
     raw_input = input
+sys.stdin = open('/dev/tty')
 
 if os.geteuid() != euid:
     print ('The installer was last run as user id:', euid, 'To remove all files you must run the uninstaller as the same user')
@@ -138,7 +183,7 @@ for f in {mime_resources!r}:
     if ret != 0:
         print ('WARNING: Failed to remove mime resource', f)
 
-for x in tuple({manifest!r}) + tuple({appdata_resources!r}) + (os.path.abspath(__file__), __file__, frozen_path, dummy_mime_path):
+for x in tuple({manifest!r}) + tuple({appdata_resources!r}) + (sys.argv[-1], frozen_path, dummy_mime_path):
     if not x or not os.path.exists(x):
         continue
     print ('Removing', x)
@@ -182,6 +227,7 @@ print ()
 if mimetype_icons and raw_input('Remove the e-book format icons? [y/n]:').lower() in ['', 'y']:
     for i, (name, size) in enumerate(mimetype_icons):
         remove_icon('mimetypes', name, size, update=i == len(mimetype_icons) - 1)
+CALIBRE_LINUX_INSTALLER_HEREDOC
 '''
 
 # }}}
@@ -1033,7 +1079,7 @@ VIEWER = '''\
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=LRF Viewer
+Name=LRF viewer
 GenericName=Viewer for LRF files
 Comment=Viewer for LRF files (SONY ebook format files)
 TryExec=lrfviewer
@@ -1047,7 +1093,7 @@ EVIEWER = '''\
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=E-book Viewer
+Name=E-book viewer
 GenericName=Viewer for E-books
 Comment=Viewer for E-books in all the major formats
 TryExec=ebook-viewer
@@ -1060,7 +1106,7 @@ ETWEAK = '''\
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=E-book Editor
+Name=E-book editor
 GenericName=Editor for E-books
 Comment=Edit E-books in various formats
 TryExec=ebook-edit
@@ -1143,7 +1189,7 @@ def write_appdata(key, entry, base, translators):
     for para in entry['description']:
         description.append(E.p(para))
         for lang, t in iteritems(translators):
-            tp = getattr(t, 'gettext' if ispy3 else 'ugettext')(para)
+            tp = t.gettext(para)
             if tp != para:
                 description.append(E.p(tp))
                 description[-1].set('{http://www.w3.org/XML/1998/namespace}lang', lang)
@@ -1160,7 +1206,7 @@ def write_appdata(key, entry, base, translators):
         type='desktop'
     )
     for lang, t in iteritems(translators):
-        tp = getattr(t, 'gettext' if ispy3 else 'ugettext')(entry['summary'])
+        tp = t.gettext(entry['summary'])
         if tp != entry['summary']:
             root.append(E.summary(tp))
             root[-1].set('{http://www.w3.org/XML/1998/namespace}lang', lang)

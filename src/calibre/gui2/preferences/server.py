@@ -1,8 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 # License: GPLv3 Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>
-
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import errno
 import json
@@ -29,6 +27,7 @@ from calibre.gui2.preferences import AbortCommit, ConfigWidgetBase, test_widget
 from calibre.gui2.widgets import HistoryLineEdit
 from calibre.srv.code import custom_list_template as default_custom_list_template
 from calibre.srv.embedded import custom_list_template, search_the_net_urls
+from calibre.srv.loop import parse_trusted_ips
 from calibre.srv.library_broker import load_gui_libraries
 from calibre.srv.opts import change_settings, options, server_config
 from calibre.srv.users import (
@@ -49,7 +48,7 @@ if iswindows and not isportable:
         exe_base = os.path.abspath(os.path.dirname(sys.executable))
         exe = os.path.join(exe_base, 'calibre.exe')
         if isinstance(exe, bytes):
-            exe = exe.decode('mbcs')
+            exe = os.fsdecode(exe)
         return exe
 
     def startup_shortcut_path():
@@ -757,14 +756,20 @@ class User(QWidget):
         username, user_data = self.username, self.user_data
         r = user_data[username]['restriction']
         if r['allowed_library_names']:
-            m = _(
-                '{} is currently only allowed to access the libraries named: {}'
-            ).format(username, ', '.join(r['allowed_library_names']))
+            libs = r['allowed_library_names']
+            m = ngettext(
+                '{} is currently only allowed to access the library named: {}',
+                '{} is currently only allowed to access the libraries named: {}',
+                len(libs)
+            ).format(username, ', '.join(libs))
             b = _('Change the allowed libraries')
         elif r['blocked_library_names']:
-            m = _(
-                '{} is currently not allowed to access the libraries named: {}'
-            ).format(username, ', '.join(r['blocked_library_names']))
+            libs = r['blocked_library_names']
+            m = ngettext(
+                '{} is currently not allowed to access the library named: {}',
+                '{} is currently not allowed to access the libraries named: {}',
+                len(libs)
+            ).format(username, ', '.join(libs))
             b = _('Change the blocked libraries')
         else:
             m = _('{} is currently allowed access to all libraries')
@@ -1380,6 +1385,14 @@ class ConfigWidget(ConfigWidgetBase):
                 )
                 self.tabs_widget.setCurrentWidget(self.users_tab)
                 return False
+        if settings['trusted_ips']:
+            try:
+                tuple(parse_trusted_ips(settings['trusted_ips']))
+            except Exception as e:
+                error_dialog(
+                    self, _('Invalid trusted IPs'), str(e), show=True)
+                return False
+
         if not self.custom_list_tab.commit():
             return False
         if not self.search_net_tab.commit():

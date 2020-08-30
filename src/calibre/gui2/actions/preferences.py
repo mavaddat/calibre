@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -28,7 +28,7 @@ class PreferencesAction(InterfaceAction):
         cm = partial(self.create_menu_action, pm)
         if isosx:
             pm.addAction(QIcon(I('config.png')), _('Preferences'), self.do_config)
-        cm('welcome wizard', _('Run Welcome &wizard'),
+        cm('welcome wizard', _('Run Welcome wizard'),
                 icon='wizard.png', triggered=self.gui.run_wizard)
         cm('plugin updater', _('Get plugins to enhance calibre'),
                 icon='plugins/plugin_updater.png', triggered=self.get_plugins)

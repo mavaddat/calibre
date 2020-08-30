@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -225,8 +225,8 @@ class InterfaceAction(QObject):
 
         :param menu: The QMenu the newly created action will be added to
         :param unique_name: A unique name for this action, this must be
-            globally unique, so make it as descriptive as possible. If in doubt add
-            a uuid to it.
+            globally unique, so make it as descriptive as possible. If in doubt, add
+            an UUID to it.
         :param text: The text of the action.
         :param icon: Either a QIcon or a file name. The file name is passed to
             the I() builtin, so you do not need to pass the full path to the images

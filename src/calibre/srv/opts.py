@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -12,11 +12,8 @@ from functools import partial
 
 from calibre.constants import config_dir
 from calibre.utils.lock import ExclusiveFile
-from polyglot.builtins import itervalues, is_py3
-if is_py3:
-    from itertools import zip_longest
-else:
-    from itertools import izip_longest as zip_longest
+from polyglot.builtins import itervalues
+from itertools import zip_longest
 
 Option = namedtuple('Option', 'name default longdoc shortdoc choices')
 
@@ -112,7 +109,7 @@ raw_options = (
 
     _('The interface on which to listen for connections'),
     'listen_on', '0.0.0.0',
-    _('The default is to listen on all available interfaces. You can change this to, for'
+    _('The default is to listen on all available IPv4 interfaces. You can change this to, for'
     ' example, "127.0.0.1" to only listen for connections from the local machine, or'
     ' to "::" to listen to all incoming IPv6 and IPv4 connections.'),
 
@@ -153,6 +150,17 @@ raw_options = (
       ' if you want to run the server without authentication but still'
       ' use calibredb to make changes to your calibre libraries. Note that'
       ' turning on this option means any program running on the computer'
+      ' can make changes to your calibre libraries.'),
+
+    _('Allow un-authenticated connections from specific IP addresses to make changes'),
+    'trusted_ips', None,
+    _('Normally, if you do not turn on authentication, the server operates in'
+      ' read-only mode, so as to not allow anonymous users to make changes to your'
+      ' calibre libraries. This option allows anybody connecting from the specified'
+      ' IP addresses to make changes. Must be a comma separated list of address or network specifications.'
+      ' This is useful if you want to run the server without authentication but still'
+      ' use calibredb to make changes to your calibre libraries. Note that'
+      ' turning on this option means anyone connecting from the specified IP addresses'
       ' can make changes to your calibre libraries.'),
 
     _('Path to user database'),

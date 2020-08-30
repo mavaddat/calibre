@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2012, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -463,7 +463,7 @@ def test_glyph_ids():
 
 def test_supports_text():
     data = P('fonts/calibreSymbols.otf', data=True)
-    if not supports_text(data, '.★½'):
+    if not supports_text(data, '.★½⯨'):
         raise RuntimeError('Incorrectly returning that text is not supported')
     if supports_text(data, 'abc'):
         raise RuntimeError('Incorrectly claiming that text is supported')

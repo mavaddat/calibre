@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -8,6 +8,7 @@ __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 import posixpath, re
 from uuid import uuid4
 
+from calibre.ebooks.oeb.base import urlquote
 from calibre.utils.filenames import ascii_text
 from polyglot.builtins import unicode_type
 from polyglot.urllib import urlparse
@@ -118,6 +119,8 @@ class LinksManager(object):
 
         if not purl.scheme:
             href = item.abshref(href)
+            if href not in self.document_hrefs:
+                href = urlquote(href)
             if href in self.document_hrefs:
                 key = (href, purl.fragment or self.top_anchor)
                 if key in self.anchor_map:

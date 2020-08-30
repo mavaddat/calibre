@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -115,14 +115,14 @@ class MovedDialog(QDialog):  # {{{
         self.header.setWordWrap(True)
         ncols = 2
         l.addWidget(self.header, 0, 0, 1, ncols)
-        self.cl = QLabel('<br><b>'+_('New location of this library:'))
-        l.addWidget(self.cl, 1, 0, 1, ncols)
+        self.cl = QLabel('<b>'+_('New location of this library:'))
+        l.addWidget(self.cl, l.rowCount(), 0, 1, ncols)
         self.loc = QLineEdit(loc, self)
-        l.addWidget(self.loc, 2, 0, 1, 1)
+        l.addWidget(self.loc, l.rowCount(), 0, 1, 1)
         self.cd = QToolButton(self)
         self.cd.setIcon(QIcon(I('document_open.png')))
         self.cd.clicked.connect(self.choose_dir)
-        l.addWidget(self.cd, 2, 1, 1, 1)
+        l.addWidget(self.cd, l.rowCount() - 1, 1, 1, 1)
         self.bb = QDialogButtonBox(QDialogButtonBox.Abort)
         b = self.bb.addButton(_('Library moved'), self.bb.AcceptRole)
         b.setIcon(QIcon(I('ok.png')))
@@ -132,7 +132,7 @@ class MovedDialog(QDialog):  # {{{
         self.bb.accepted.connect(self.accept)
         self.bb.rejected.connect(self.reject)
         l.addWidget(self.bb, 3, 0, 1, ncols)
-        self.resize(self.sizeHint() + QSize(100, 50))
+        self.resize(self.sizeHint() + QSize(120, 0))
 
     def choose_dir(self):
         d = choose_dir(self, 'library moved choose new loc',
@@ -204,7 +204,7 @@ class BackupStatus(QDialog):  # {{{
 class ChooseLibraryAction(InterfaceAction):
 
     name = 'Choose Library'
-    action_spec = (_('Choose Library'), 'lt.png',
+    action_spec = (_('Choose library'), 'lt.png',
             _('Choose calibre library to work with'), None)
     dont_add_to = frozenset(('context-menu-device',))
     action_add_menu = True
@@ -281,6 +281,14 @@ class ChooseLibraryAction(InterfaceAction):
         self.view_state_map = {}
         self.restore_view_state.connect(self._restore_view_state,
                 type=Qt.QueuedConnection)
+        ac = self.create_action(spec=(_('Switch to previous library'), 'lt.png',
+                                      None, None),
+                                      attr='action_previous_library')
+        ac.triggered.connect(self.switch_to_previous_library, type=Qt.QueuedConnection)
+        self.gui.keyboard.register_shortcut(
+            self.unique_name + '-' + 'action_previous_library',
+            ac.text(), action=ac, group=self.action_spec[0], default_keys=('Ctrl+Alt+p',))
+        self.gui.addAction(ac)
 
     @property
     def preserve_state_on_switch(self):
@@ -344,6 +352,15 @@ class ChooseLibraryAction(InterfaceAction):
 
     def initialization_complete(self):
         self.library_changed(self.gui.library_view.model().db)
+
+    def switch_to_previous_library(self):
+        db = self.gui.library_view.model().db
+        locations = list(self.stats.locations(db))
+        for name, loc in locations:
+            is_prev_lib = name == self.prev_lname
+            if is_prev_lib:
+                self.switch_requested(loc)
+                break
 
     def build_menus(self):
         if os.environ.get('CALIBRE_OVERRIDE_DATABASE_PATH', None):
@@ -525,7 +542,7 @@ class ChooseLibraryAction(InterfaceAction):
         if d.error is None:
             if not question_dialog(self.gui, _('Success'),
                     _('Found no errors in your calibre library database.'
-                        ' Do you want calibre to check if the files in your '
+                        ' Do you want calibre to check if the files in your'
                         ' library match the information in the database?')):
                 return
         else:

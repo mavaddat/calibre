@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -9,7 +9,7 @@ from calibre import guess_type
 from calibre.customize import (FileTypePlugin, MetadataReaderPlugin,
     MetadataWriterPlugin, PreferencesPlugin, InterfaceActionBase, StoreBase)
 from calibre.constants import numeric_version
-from calibre.ebooks.metadata.archive import ArchiveExtract, get_comic_metadata
+from calibre.ebooks.metadata.archive import ArchiveExtract, KPFExtract, get_comic_metadata
 from calibre.ebooks.html.to_zip import HTML2ZIP
 
 plugins = []
@@ -124,7 +124,7 @@ class TXT2TXTZ(FileTypePlugin):
             return path_to_ebook
 
 
-plugins += [HTML2ZIP, PML2PMLZ, TXT2TXTZ, ArchiveExtract,]
+plugins += [HTML2ZIP, PML2PMLZ, TXT2TXTZ, ArchiveExtract, KPFExtract]
 # }}}
 
 # Metadata reader plugins {{{
@@ -871,6 +871,12 @@ class ActionPolish(InterfaceActionBase):
     description = _('Fine tune your e-books')
 
 
+class ActionBrowseAnnotations(InterfaceActionBase):
+    name = 'Browse Annotations'
+    actual_plugin = 'calibre.gui2.actions.browse_annots:BrowseAnnotationsAction'
+    description = _('Browse highlights and bookmarks from all books in the library')
+
+
 class ActionEditToC(InterfaceActionBase):
     name = 'Edit ToC'
     actual_plugin = 'calibre.gui2.actions.toc_edit:ToCEditAction'
@@ -1095,7 +1101,7 @@ plugins += [ActionAdd, ActionFetchAnnotations, ActionGenerateCatalog,
         ActionCopyToLibrary, ActionTweakEpub, ActionUnpackBook, ActionNextMatch, ActionStore,
         ActionPluginUpdater, ActionPickRandom, ActionEditToC, ActionSortBy,
         ActionMarkBooks, ActionEmbed, ActionTemplateTester, ActionTagMapper, ActionAuthorMapper,
-        ActionVirtualLibrary]
+        ActionVirtualLibrary, ActionBrowseAnnotations]
 
 # }}}
 
@@ -1738,15 +1744,6 @@ class StoreNextoStore(StoreBase):
     affiliate = True
 
 
-class StoreOpenBooksStore(StoreBase):
-    name = 'Open Books'
-    description = 'Comprehensive listing of DRM free e-books from a variety of sources provided by users of calibre.'
-    actual_plugin = 'calibre.gui2.store.stores.open_books_plugin:OpenBooksStore'
-
-    drm_free_only = True
-    headquarters = 'US'
-
-
 class StoreOzonRUStore(StoreBase):
     name = 'OZON.ru'
     description = 'e-books from OZON.ru'
@@ -1910,7 +1907,6 @@ plugins += [
     StoreMillsBoonUKStore,
     StoreMobileReadStore,
     StoreNextoStore,
-    StoreOpenBooksStore,
     StoreOzonRUStore,
     StorePragmaticBookshelfStore,
     StorePublioStore,
@@ -1955,7 +1951,6 @@ if __name__ == '__main__':
     try:
         subprocess.check_call(['python', '-c', textwrap.dedent(
         '''
-        from __future__ import print_function
         import time, sys, init_calibre
         st = time.time()
         import calibre.customize.builtins

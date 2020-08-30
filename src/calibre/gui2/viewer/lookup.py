@@ -1,20 +1,18 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPL v3 Copyright: 2019, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import os
 import sys
-import textwrap
 
 from PyQt5.Qt import (
-    QApplication, QComboBox, QDialog, QFormLayout, QHBoxLayout, QIcon, QLabel,
-    QLineEdit, QListWidget, QListWidgetItem, QPushButton, Qt, QTimer, QUrl,
-    QVBoxLayout, QWidget
+    QApplication, QComboBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout,
+    QIcon, QLabel, QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSize, Qt,
+    QTimer, QUrl, QVBoxLayout, QWidget, pyqtSignal
 )
 from PyQt5.QtWebEngineWidgets import (
-    QWebEnginePage, QWebEngineProfile, QWebEngineView
+    QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineView
 )
 
 from calibre import prints, random_user_agent
@@ -57,6 +55,7 @@ class SourceEditor(Dialog):
             self.initial_name = source_to_edit['name']
             self.initial_url = source_to_edit['url']
         Dialog.__init__(self, _('Edit lookup source'), 'viewer-edit-lookup-location', parent=parent)
+        self.resize(self.sizeHint())
 
     def setup_ui(self):
         self.l = l = QFormLayout(self)
@@ -70,11 +69,13 @@ class SourceEditor(Dialog):
         self.url_edit = u = QLineEdit(self)
         u.setPlaceholderText(_('The URL template of the source'))
         u.setMinimumWidth(n.minimumWidth())
-        u.setToolTip(textwrap.fill(_(
-            'The URL template must starts with https:// and have {word} in it which will be replaced by the actual query')))
         l.addRow(_('&URL:'), u)
         if self.initial_url:
             u.setText(self.initial_url)
+        la = QLabel(_(
+            'The URL template must starts with https:// and have {word} in it which will be replaced by the actual query'))
+        la.setWordWrap(True)
+        l.addRow(la)
         l.addRow(self.bb)
         if self.initial_name:
             u.setFocus(Qt.OtherFocusReason)
@@ -193,7 +194,7 @@ def create_profile():
         ans.setHttpUserAgent(random_user_agent(allow_ie=False))
         ans.setCachePath(os.path.join(cache_dir(), 'ev2vl'))
         js = P('lookup.js', data=True, allow_user_override=False)
-        insert_scripts(ans, create_script('lookup.js', js))
+        insert_scripts(ans, create_script('lookup.js', js, injection_point=QWebEngineScript.DocumentCreation))
         s = ans.settings()
         s.setDefaultTextEncoding('utf-8')
         create_profile.ans = ans
@@ -210,10 +211,10 @@ class Page(QWebEnginePage):
             sys.stderr.flush()
 
     def zoom_in(self):
-        self.setZoomFactor(min(self.zoomFactor() + 0.25, 5))
+        self.setZoomFactor(min(self.zoomFactor() + 0.2, 5))
 
     def zoom_out(self):
-        self.setZoomFactor(max(0.25, self.zoomFactor() - 0.25))
+        self.setZoomFactor(max(0.25, self.zoomFactor() - 0.2))
 
     def default_zoom(self):
         self.setZoomFactor(1)
@@ -221,13 +222,19 @@ class Page(QWebEnginePage):
 
 class View(QWebEngineView):
 
+    inspect_element = pyqtSignal()
+
     def contextMenuEvent(self, ev):
         menu = self.page().createStandardContextMenu()
         menu.addSeparator()
         menu.addAction(_('Zoom in'), self.page().zoom_in)
         menu.addAction(_('Zoom out'), self.page().zoom_out)
         menu.addAction(_('Default zoom'), self.page().default_zoom)
+        menu.addAction(_('Inspect'), self.do_inspect_element)
         menu.exec_(ev.globalPos())
+
+    def do_inspect_element(self):
+        self.inspect_element.emit()
 
 
 class Lookup(QWidget):
@@ -247,6 +254,7 @@ class Lookup(QWidget):
         self.label = la = QLabel(_('Lookup &in:'))
         h.addWidget(la), h.addWidget(sb), la.setBuddy(sb)
         self.view = View(self)
+        self.view.inspect_element.connect(self.show_devtools)
         self._page = Page(create_profile(), self.view)
         apply_font_settings(self._page)
         secure_webengine(self._page, for_viewer=True)
@@ -259,6 +267,24 @@ class Lookup(QWidget):
         self.add_button = b = QPushButton(QIcon(I('plus.png')), _('Add more sources'))
         b.clicked.connect(self.add_sources)
         l.addWidget(b)
+
+    def show_devtools(self):
+        if not hasattr(self, '_devtools_page'):
+            self._devtools_page = QWebEnginePage()
+            self._devtools_view = QWebEngineView(self)
+            self._devtools_view.setPage(self._devtools_page)
+            self._page.setDevToolsPage(self._devtools_page)
+            self._devtools_dialog = d = QDialog(self)
+            d.setWindowTitle('Inspect Lookup page')
+            v = QVBoxLayout(d)
+            v.addWidget(self._devtools_view)
+            d.bb = QDialogButtonBox(QDialogButtonBox.Close)
+            d.bb.rejected.connect(d.reject)
+            v.addWidget(d.bb)
+            d.resize(QSize(800, 600))
+            d.setAttribute(Qt.WA_DeleteOnClose, False)
+        self._devtools_dialog.show()
+        self._page.triggerAction(QWebEnginePage.InspectElement)
 
     def add_sources(self):
         if SourcesEditor(self).exec_() == QDialog.Accepted:
@@ -311,6 +337,6 @@ class Lookup(QWidget):
         self.view.load(QUrl(url))
         self.current_query = query
 
-    def selected_text_changed(self, text):
+    def selected_text_changed(self, text, annot_id):
         self.selected_text = text or ''
         self.debounce_timer.start()

@@ -1,7 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
 # License: GPLv3 Copyright: 2010, Kovid Goyal <kovid at kovidgoyal.net>
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 
 import textwrap
@@ -372,6 +371,7 @@ class TweaksView(QListView):
         self.setAlternatingRowColors(True)
         self.setSpacing(5)
         self.setVerticalScrollMode(self.ScrollPerPixel)
+        self.setMinimumWidth(300)
 
     def currentChanged(self, cur, prev):
         QListView.currentChanged(self, cur, prev)
@@ -496,7 +496,7 @@ class ConfigWidget(ConfigWidgetBase):
                 import traceback
                 return error_dialog(self, _('Failed'),
                     _('There was a syntax error in your tweak. Click '
-                        'the show details button for details.'), show=True,
+                        'the "Show details" button for details.'), show=True,
                     det_msg=traceback.format_exc())
             self.tweaks.set_plugin_tweaks(l)
             self.changed()

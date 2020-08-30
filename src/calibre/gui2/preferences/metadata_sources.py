@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -161,7 +161,7 @@ class FieldsModel(QAbstractListModel):  # {{{
                 'rating' : _('Rating'),
                 'tags' : _('Tags'),
                 'title': _('Title'),
-                'series': _('Series'),
+                'series': ngettext('Series', 'Series', 1),
                 'languages': _('Languages'),
         }
         self.overrides = {}
@@ -304,8 +304,6 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         r('wait_after_first_cover_result', msprefs)
         r('swap_author_names', msprefs)
         r('fewer_tags', msprefs)
-        r('find_first_edition_date', msprefs)
-        self.opt_find_first_edition_date.setVisible(False)
         r('keep_dups', msprefs)
         r('append_comments', msprefs)
 

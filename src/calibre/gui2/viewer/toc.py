@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPL v3 Copyright: 2019, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import re
 from functools import partial
@@ -168,7 +167,7 @@ class TOCItem(QStandardItem):
         self.setFlags(Qt.ItemIsEnabled)
         self.is_current_search_result = False
         self.depth = depth
-        self.is_being_viewed = False
+        self.set_being_viewed(False)
 
     def set_being_viewed(self, is_being_viewed):
         self.is_being_viewed = is_being_viewed

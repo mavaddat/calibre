@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -928,10 +928,6 @@ class BooksModel(QAbstractTableModel):  # {{{
             id_ = self.id(index)
             self.column_color.mi = None
 
-            if self.color_row_fmt_cache is None:
-                self.color_row_fmt_cache = tuple(fmt for key, fmt in
-                    self.db.prefs['column_color_rules'] if key == color_row_key)
-
             for k, fmt in self.db.prefs['column_color_rules']:
                 if k == key:
                     ccol = self.column_color(id_, key, fmt, self.db,
@@ -954,6 +950,9 @@ class BooksModel(QAbstractTableModel):  # {{{
                     except:
                         pass
 
+            if self.color_row_fmt_cache is None:
+                self.color_row_fmt_cache = tuple(fmt for key, fmt in
+                    self.db.prefs['column_color_rules'] if key == color_row_key)
             for fmt in self.color_row_fmt_cache:
                 ccol = self.column_color(id_, color_row_key, fmt, self.db,
                                          self.color_cache, self.color_template_cache)
@@ -1015,7 +1014,7 @@ class BooksModel(QAbstractTableModel):  # {{{
                 if ht == 'timestamp':  # change help text because users know this field as 'date'
                     ht = 'date'
                 if fm['is_category']:
-                    is_cat = '\n\n' + _('Click in this column and press Q to Quickview books with the same %s') % ht
+                    is_cat = '\n\n' + _('Click in this column and press Q to Quickview books with the same "%s"') % ht
                 else:
                     is_cat = ''
                 cust_desc = ''

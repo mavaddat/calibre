@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2015, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import hashlib
 import random
@@ -13,6 +12,7 @@ from json import load as load_json_file, loads as json_loads
 from threading import Lock
 
 from calibre import as_unicode
+from calibre.constants import in_develop_mode
 from calibre.customize.ui import available_input_formats
 from calibre.db.view import sanitize_sort_field_name
 from calibre.srv.ajax import search_result
@@ -25,8 +25,10 @@ from calibre.srv.metadata import (
 from calibre.srv.routes import endpoint, json
 from calibre.srv.utils import get_library_data, get_use_roman
 from calibre.utils.config import prefs, tweaks
-from calibre.utils.icu import sort_key, numeric_sort_key
-from calibre.utils.localization import get_lang, lang_map_for_ui, localize_website_link
+from calibre.utils.icu import numeric_sort_key, sort_key
+from calibre.utils.localization import (
+    get_lang, lang_map_for_ui, localize_website_link
+)
 from calibre.utils.search_query_parser import ParseException
 from calibre.utils.serialize import json_dumps
 from polyglot.builtins import iteritems, itervalues
@@ -36,12 +38,10 @@ POSTABLE = frozenset({'GET', 'POST', 'HEAD'})
 
 @endpoint('', auth_required=False)
 def index(ctx, rd):
-    return lopen(P('content-server/index-generated.html'), 'rb')
-
-
-@endpoint('/calibre.appcache', auth_required=False, cache_control='no-cache')
-def appcache(ctx, rd):
-    return lopen(P('content-server/calibre.appcache'), 'rb')
+    ans_file = lopen(P('content-server/index-generated.html'), 'rb')
+    if not in_develop_mode:
+        return ans_file
+    return ans_file.read().replace(b'__IN_DEVELOP_MODE__', b'1')
 
 
 @endpoint('/robots.txt', auth_required=False)

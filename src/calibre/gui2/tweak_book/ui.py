@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -292,9 +292,6 @@ class Main(MainWindow):
         self.status_bar_default_msg = la = QLabel(' ' + _('{0} {1} created by {2}').format(__appname__, get_version(), 'Kovid Goyal'))
         la.base_template = unicode_type(la.text())
         self.status_bar.addWidget(la)
-        f = self.status_bar.font()
-        f.setBold(True)
-        self.status_bar.setFont(f)
 
         self.boss(self)
         g = QApplication.instance().desktop().availableGeometry(self)
@@ -351,14 +348,13 @@ class Main(MainWindow):
         self.action_new_file = treg('document-new.png', _('&New file (images/fonts/HTML/etc.)'), self.boss.add_file,
                                    'new-file', (), _('Create a new file in the current book'))
         self.action_import_files = treg('document-import.png', _('&Import files into book'), self.boss.add_files, 'new-files', (), _('Import files into book'))
-        self.action_open_book = treg('document_open.png', _('&Open book'), self.boss.open_book, 'open-book', 'Ctrl+O', _('Open a new book'))
+        self.action_open_book = treg('document_open.png', _('&Open book'), self.boss.open_book, 'open-book', 'Ctrl+O', _('Open a book'))
         self.action_open_book_folder = treg('mimetypes/dir.png', _('Open &folder (unzipped EPUB) as book'), partial(self.boss.open_book, open_folder=True),
                                             'open-folder-as-book', (), _('Open a folder (unzipped EPUB) as a book'))
         self.action_edit_next_file = treg('arrow-down.png', _('Edit &next file'), partial(self.boss.edit_next_file, backwards=False),
                 'edit-next-file', 'Ctrl+Alt+Down', _('Edit the next file in the spine'))
         self.action_edit_previous_file = treg('arrow-up.png', _('Edit &previous file'), partial(self.boss.edit_next_file, backwards=True),
                 'edit-previous-file', 'Ctrl+Alt+Up', _('Edit the previous file in the spine'))
-        # Qt does not generate shortcut overrides for cmd+arrow on os x which
         # Qt does not generate shortcut overrides for cmd+arrow on os x which
         # means these shortcuts interfere with editing
         self.action_global_undo = treg('back.png', _('&Revert to before'), self.boss.do_global_undo, 'global-undo', () if isosx else 'Ctrl+Left',
@@ -370,7 +366,7 @@ class Main(MainWindow):
         self.action_save_copy = treg('save.png', _('Save a &copy'), self.boss.save_copy, 'save-copy', 'Ctrl+Alt+S', _('Save a copy of the book'))
         self.action_quit = treg('window-close.png', _('&Quit'), self.boss.quit, 'quit', 'Ctrl+Q', _('Quit'))
         self.action_preferences = treg('config.png', _('&Preferences'), self.boss.preferences, 'preferences', 'Ctrl+P', _('Preferences'))
-        self.action_new_book = treg('plus.png', _('Create &new, empty book'), self.boss.new_book, 'new-book', (), _('Create a new, empty book'))
+        self.action_new_book = treg('plus.png', _('Create new, &empty book'), self.boss.new_book, 'new-book', (), _('Create a new, empty book'))
         self.action_import_book = treg('add_book.png', _('&Import an HTML or DOCX file as a new book'),
                                       self.boss.import_book, 'import-book', (), _('Import an HTML or DOCX file as a new book'))
         self.action_quick_edit = treg('modified.png', _('&Quick open a file to edit'), self.boss.quick_open, 'quick-open', ('Ctrl+T'), _(
@@ -474,7 +470,7 @@ class Main(MainWindow):
                                          'find', {'direction':'up'}, ('Shift+F3', 'Shift+Ctrl+G'), _('Find previous match'))
         self.action_replace = sreg('replace', _('&Replace'),
                                    'replace', keys=('Ctrl+R'), description=_('Replace current match'))
-        self.action_replace_next = sreg('replace-next', _('&Replace and find next'),
+        self.action_replace_next = sreg('replace-next', _('Replace and find ne&xt'),
                                         'replace-find', {'direction':'down'}, ('Ctrl+]'), _('Replace current match and find next'))
         self.action_replace_previous = sreg('replace-previous', _('R&eplace and find previous'),
                                         'replace-find', {'direction':'up'}, ('Ctrl+['), _('Replace current match and find previous'))
@@ -493,7 +489,7 @@ class Main(MainWindow):
 
         # Check Book actions
         group = _('Check book')
-        self.action_check_book = treg('debug.png', _('&Check book'), self.boss.check_requested, 'check-book', ('F7'), _('Check book for errors'))
+        self.action_check_book = treg('debug.png', _('C&heck book'), self.boss.check_requested, 'check-book', ('F7'), _('Check book for errors'))
         self.action_spell_check_book = treg('spell-check.png', _('Check &spelling'), self.boss.spell_check_requested, 'spell-check-book', ('Alt+F7'), _(
             'Check book for spelling errors'))
         self.action_check_book_next = reg('forward.png', _('&Next error'), partial(
@@ -512,7 +508,7 @@ class Main(MainWindow):
             'window-close.png', _('&Close current tab'), self.central.close_current_editor, 'close-current-tab', 'Ctrl+W', _(
                 'Close the currently open tab'))
         self.action_close_all_but_current_tab = reg(
-            'edit-clear.png', _('&Close other tabs'), self.central.close_all_but_current_editor, 'close-all-but-current-tab', 'Ctrl+Alt+W', _(
+            'edit-clear.png', _('C&lose other tabs'), self.central.close_all_but_current_editor, 'close-all-but-current-tab', 'Ctrl+Alt+W', _(
                 'Close all tabs except the current tab'))
         self.action_help = treg(
             'help.png', _('User &Manual'), lambda : open_url(QUrl(localize_user_manual_link(
@@ -780,8 +776,12 @@ class Main(MainWindow):
         return super(Main, self).resizeEvent(ev)
 
     def update_window_title(self):
-        fname = os.path.basename(current_container().path_to_ebook)
-        self.setWindowTitle(self.current_metadata.title + ' [%s] :: %s :: %s' %(current_container().book_type.upper(), fname, self.APP_NAME))
+        cc = current_container()
+        if cc is not None:
+            fname = os.path.basename(cc.path_to_ebook)
+            self.setWindowTitle(self.current_metadata.title + ' [%s] :: %s :: %s' %(cc.book_type_for_display, fname, self.APP_NAME))
+        else:
+            self.setWindowTitle(self.APP_NAME)
 
     def closeEvent(self, e):
         if self.boss.quit():

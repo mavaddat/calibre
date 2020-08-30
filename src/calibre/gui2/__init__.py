@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -150,6 +150,7 @@ def create_defs():
     defs['ui_style'] = 'calibre' if iswindows or isosx else 'system'
     defs['tag_browser_old_look'] = False
     defs['tag_browser_hide_empty_categories'] = False
+    defs['tag_browser_always_autocollapse'] = False
     defs['book_list_tooltips'] = True
     defs['show_layout_buttons'] = False
     defs['bd_show_cover'] = True
@@ -191,6 +192,10 @@ def create_defs():
     defs['wrap_toolbar_text'] = False
     defs['dnd_merge'] = True
     defs['booklist_grid'] = False
+    defs['browse_annots_restrict_to_user'] = None
+    defs['browse_annots_restrict_to_type'] = None
+    defs['browse_annots_use_stemmer'] = True
+    defs['annots_export_format'] = 'txt'
 
 
 create_defs()
@@ -198,7 +203,7 @@ del create_defs
 # }}}
 
 UNDEFINED_QDATETIME = QDateTime(UNDEFINED_DATE)
-
+QT_HIDDEN_CLEAR_ACTION = '_q_qlineeditclearaction'
 ALL_COLUMNS = ['title', 'ondevice', 'authors', 'size', 'timestamp', 'rating', 'publisher',
         'tags', 'series', 'pubdate']
 
@@ -392,21 +397,26 @@ def error_dialog(parent, title, msg, det_msg='', show=False,
 
 
 def question_dialog(parent, title, msg, det_msg='', show_copy_button=False,
-        default_yes=True,
-        # Skippable dialogs
-        # Set skip_dialog_name to a unique name for this dialog
-        # Set skip_dialog_msg to a message displayed to the user
-        skip_dialog_name=None, skip_dialog_msg=_('Show this confirmation again'),
-        skip_dialog_skipped_value=True, skip_dialog_skip_precheck=True,
-        # Override icon (QIcon to be used as the icon for this dialog or string for I())
-        override_icon=None,
-        # Change the text/icons of the yes and no buttons.
-        # The icons must be QIcon objects or strings for I()
-        yes_text=None, no_text=None, yes_icon=None, no_icon=None,
-    ):
+    default_yes=True,
+    # Skippable dialogs
+    # Set skip_dialog_name to a unique name for this dialog
+    # Set skip_dialog_msg to a message displayed to the user
+    skip_dialog_name=None, skip_dialog_msg=_('Show this confirmation again'),
+    skip_dialog_skipped_value=True, skip_dialog_skip_precheck=True,
+    # Override icon (QIcon to be used as the icon for this dialog or string for I())
+    override_icon=None,
+    # Change the text/icons of the yes and no buttons.
+    # The icons must be QIcon objects or strings for I()
+    yes_text=None, no_text=None, yes_icon=None, no_icon=None,
+):
     from calibre.gui2.dialogs.message_box import MessageBox
 
-    auto_skip = set(gprefs.get('questions_to_auto_skip', []))
+    if not isinstance(skip_dialog_name, unicode_type):
+        skip_dialog_name = None
+    try:
+        auto_skip = set(gprefs.get('questions_to_auto_skip', ()))
+    except Exception:
+        auto_skip = set()
     if (skip_dialog_name is not None and skip_dialog_name in auto_skip):
         return bool(skip_dialog_skipped_value)
 
@@ -1010,7 +1020,7 @@ class Application(QApplication):
         try:
             if self.clipboard().ownsClipboard():
                 import ctypes
-                ctypes.WinDLL(b'ole32.dll').OleFlushClipboard()
+                ctypes.WinDLL('ole32.dll').OleFlushClipboard()
         except Exception:
             import traceback
             traceback.print_exc()
@@ -1465,12 +1475,13 @@ empty_index = empty_model.index(0)
 def set_app_uid(val):
     import ctypes
     from ctypes import wintypes
+    from ctypes import HRESULT
     try:
         AppUserModelID = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
     except Exception:  # Vista has no app uids
         return False
     AppUserModelID.argtypes = [wintypes.LPCWSTR]
-    AppUserModelID.restype = wintypes.HRESULT
+    AppUserModelID.restype = HRESULT
     try:
         AppUserModelID(unicode_type(val))
     except Exception as err:

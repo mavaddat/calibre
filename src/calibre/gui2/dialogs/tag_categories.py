@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -10,7 +10,7 @@ from calibre.gui2.dialogs.tag_categories_ui import Ui_TagCategories
 from calibre.gui2.dialogs.confirm_delete import confirm
 from calibre.gui2 import error_dialog
 from calibre.constants import islinux
-from calibre.utils.icu import sort_key, strcmp
+from calibre.utils.icu import sort_key, strcmp, primary_contains
 from polyglot.builtins import iteritems, unicode_type
 
 
@@ -38,12 +38,13 @@ class TagCategories(QDialog, Ui_TagCategories):
     If you add a category, it is permissible to set v to zero. If you delete
     a category, ensure that both the name and the category match.
     '''
-    category_labels_orig =   ['', 'authors', 'series', 'publisher', 'tags']
+    category_labels_orig =   ['', 'authors', 'series', 'publisher', 'tags', 'languages']
 
     def __init__(self, window, db, on_category=None, book_ids=None):
         QDialog.__init__(self, window)
         Ui_TagCategories.__init__(self)
         self.setupUi(self)
+        self.blank.setText('\xa0')
 
         # I can't figure out how to get these into the .ui file
         self.gridLayout_2.setColumnMinimumWidth(0, 50)
@@ -67,14 +68,17 @@ class TagCategories(QDialog, Ui_TagCategories):
 
         self.category_labels = self.category_labels_orig[:]
         self.category_icons  = [None, QIcon(I('user_profile.png')), QIcon(I('series.png')),
-                           QIcon(I('publisher.png')), QIcon(I('tags.png'))]
+                           QIcon(I('publisher.png')), QIcon(I('tags.png')),
+                           QIcon(I('languages.png'))]
         self.category_values = [None,
                            lambda: [t.original_name.replace('|', ',') for t in self.db_categories['authors']],
                            lambda: [t.original_name for t in self.db_categories['series']],
                            lambda: [t.original_name for t in self.db_categories['publisher']],
-                           lambda: [t.original_name for t in self.db_categories['tags']]
+                           lambda: [t.original_name for t in self.db_categories['tags']],
+                           lambda: [t.original_name for t in self.db_categories['languages']]
                           ]
-        category_names  = ['', _('Authors'), ngettext('Series', 'Series', 2), _('Publishers'), _('Tags')]
+        category_names  = ['', _('Authors'), ngettext('Series', 'Series', 2),
+                            _('Publishers'), _('Tags'), _('Languages')]
 
         for key,cc in iteritems(self.db.custom_field_metadata()):
             if cc['datatype'] in ['text', 'series', 'enumeration']:
@@ -106,6 +110,7 @@ class TagCategories(QDialog, Ui_TagCategories):
         self.category_box.currentIndexChanged[int].connect(self.select_category)
         self.category_filter_box.currentIndexChanged[int].connect(
                                                 self.display_filtered_categories)
+        self.item_filter_box.textEdited.connect(self.display_filtered_items)
         self.delete_category_button.clicked.connect(self.del_category)
         if islinux:
             self.available_items_box.itemDoubleClicked.connect(self.apply_tags)
@@ -168,14 +173,19 @@ class TagCategories(QDialog, Ui_TagCategories):
         w.setToolTip(_('Category lookup name: ') + item.label)
         return w
 
+    def display_filtered_items(self, text):
+        self.display_filtered_categories(None)
+
     def display_filtered_categories(self, idx):
         idx = idx if idx is not None else self.category_filter_box.currentIndex()
         self.available_items_box.clear()
         self.applied_items_box.clear()
+        item_filter = self.item_filter_box.text()
         for item in self.all_items_sorted:
             if idx == 0 or item.label == self.category_labels[idx]:
                 if item.index not in self.applied_items and item.exists:
-                    self.available_items_box.addItem(self.make_list_widget(item))
+                    if primary_contains(item_filter, item.name):
+                        self.available_items_box.addItem(self.make_list_widget(item))
         for index in self.applied_items:
             self.applied_items_box.addItem(self.make_list_widget(self.all_items[index]))
 

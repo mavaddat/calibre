@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -312,7 +312,7 @@ class EditMetadataAction(InterfaceAction):
                 intro_msg=_('The downloaded metadata is on the left and the original metadata'
                             ' is on the right. If a downloaded value is blank or unknown,'
                             ' the original value is used.'),
-                action_button=(_('&View Book'), I('view.png'), self.gui.iactions['View'].view_historical),
+                action_button=(_('&View book'), I('view.png'), self.gui.iactions['View'].view_historical),
                 db=db
             )
             if d.exec_() == d.Accepted:

@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -14,7 +14,7 @@ from polyglot.builtins import iteritems, itervalues, map, unicode_type
 from lxml import etree
 
 from calibre import fit_image
-from calibre.ebooks.oeb.base import urlunquote
+from calibre.ebooks.oeb.base import urlunquote, urlquote
 from calibre.ebooks.docx.images import pt_to_emu
 from calibre.utils.filenames import ascii_filename
 from calibre.utils.imghdr import identify
@@ -50,8 +50,9 @@ class ImagesManager(object):
 
     def read_image(self, href):
         if href not in self.images:
-            item = self.oeb.manifest.hrefs.get(href)
+            item = self.oeb.manifest.hrefs.get(href) or self.oeb.manifest.hrefs.get(urlquote(href))
             if item is None or not isinstance(item.data, bytes):
+                self.log.warning('Failed to find image:', href)
                 return
             try:
                 fmt, width, height = identify(item.data)

@@ -3,7 +3,8 @@
 from __python__ import hash_literals
 
 from elementmaker import E
-from read_book.globals import runtime
+
+from read_book.globals import dark_link_color, runtime
 from session import defaults
 
 opts = {}
@@ -21,8 +22,12 @@ def update_settings(settings):
     opts.lines_per_sec_smooth = settings.lines_per_sec_smooth
     opts.margin_left = max(0, settings.margin_left)
     opts.margin_right = max(0, settings.margin_right)
+    opts.margin_top = max(0, settings.margin_top)
+    opts.margin_bottom = max(0, settings.margin_bottom)
     opts.override_book_colors = settings.override_book_colors
     opts.paged_wheel_scrolls_by_screen = v'!!settings.paged_wheel_scrolls_by_screen'
+    opts.paged_pixel_scroll_threshold = settings.paged_pixel_scroll_threshold
+    opts.paged_taps_scroll_by_screen = v'!!settings.paged_taps_scroll_by_screen'
     opts.scroll_auto_boundary_delay = settings.scroll_auto_boundary_delay
     opts.scroll_stop_boundaries = v'!!settings.scroll_stop_boundaries'
     opts.user_stylesheet = settings.user_stylesheet
@@ -35,7 +40,23 @@ def apply_font_size():
         document.documentElement.style.fontSize = '{}px'.format(opts.base_font_size)
 
 
-def apply_colors():
+def default_selection_colors():
+    if opts.is_dark_theme:
+        return dark_link_color, '#111'
+    return '#3297FD', '#fff'
+
+
+def make_selection_background_opaque(selbg):
+    # see https://stackoverflow.com/questions/7224445/css3-selection-behaves-differently-in-ff-chrome
+    if selbg and selbg.startsWith('#') and len(selbg) is 7:
+        selbg += 'fe'
+    return selbg
+
+
+styles_id = 'calibre-color-scheme-style-overrides'
+
+
+def apply_colors(is_content_popup):
     for elem in (document.documentElement, document.body):
         elem.style.color = opts.color_scheme.foreground
         # set background color to transparent so that the users background
@@ -44,7 +65,7 @@ def apply_colors():
     document.documentElement.style.backgroundColor = opts.bg_image_fade
     ss = document.getElementById('calibre-color-scheme-style-overrides')
     if not ss:
-        ss = E.style(id='calibre-color-scheme-style-overrides', type='text/css')
+        ss = E.style(id=styles_id, type='text/css')
         document.documentElement.appendChild(ss)
     text = ''
     if opts.override_book_colors is not 'never':
@@ -63,7 +84,51 @@ def apply_colors():
         # priority than the override all selectors above
         text += f'\nhtml > body :link, html > body :link * {{ color: {c} !important }} html > body :visited, html > body :visited * {{ color: {c} !important }}'
 
+    selbg, selfg = default_selection_colors()
+    selbg = make_selection_background_opaque(selbg)
+    text += f'\n::selection {{ background-color: {selbg}; color: {selfg} }}'
+    text += f'\n::selection:window-inactive {{ background-color: {selbg}; color: {selfg} }}'
+    if not is_content_popup:
+        # In Chrome when content overflows in RTL and vertical layouts on the left side,
+        # it is not displayed properly when scrolling unless overflow:visible is set,
+        # but this causes scrollbars to appear.
+        # Force disable scrollbars in Chrome, Safari, and Firefox to address this side effect.
+        text += '\nhtml::-webkit-scrollbar, body::-webkit-scrollbar { display: none !important }'
+        # for firefox: https://developer.mozilla.org/en-US/docs/Web/CSS/scrollbar-width
+        text += '\nhtml, body { scrollbar-width: none !important }'
+
+        # show a dot after highlights that have notes
+        text += '''\n\n
+        .crw-has-dot::after {
+            content: "";\
+            vertical-align: text-top;\
+            background-color: currentColor !important;\
+            text-decoration: none !important;\
+            display: inline-block;\
+            height: 0.7ex;\
+            width: 0.7ex;\
+            border-radius: 50%;\
+        }
+        '''
+
     ss.textContent = text
+
+
+def set_selection_style(style):
+    if not style:
+        selbg, selfg = default_selection_colors()
+        style = {'color': selfg, 'background-color': selbg}
+    sheet = document.getElementById(styles_id)
+    if not sheet:
+        return
+    css_text = ''
+    if style.selbg:
+        style.selbg = make_selection_background_opaque(style.selbg)
+    for prop in Object.keys(style):
+        css_text += f'{prop}: {style[prop]}; '
+    for rule in sheet.sheet.cssRules:
+        if rule.type is rule.STYLE_RULE and rule.selectorText.indexOf('selection') > -1:
+            rule.style.cssText = css_text
 
 
 def set_color_scheme_class():
@@ -86,7 +151,7 @@ def apply_stylesheet():
     style.textContent = opts.user_stylesheet
 
 
-def apply_settings():
+def apply_settings(is_content_popup):
     apply_font_size()
-    apply_colors()
+    apply_colors(is_content_popup)
     apply_stylesheet()

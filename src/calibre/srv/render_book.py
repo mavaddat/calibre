@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import json
 import os
@@ -42,7 +41,6 @@ from calibre.srv.opts import grouper
 from calibre.utils.date import EPOCH
 from calibre.utils.filenames import rmtree
 from calibre.utils.ipc.simple_worker import start_pipe_worker
-from calibre.utils.iso8601 import parse_iso8601
 from calibre.utils.logging import default_log
 from calibre.utils.serialize import (
     json_dumps, json_loads, msgpack_dumps, msgpack_loads
@@ -133,11 +131,20 @@ def create_link_replacer(container, link_uid, changed):
 
 
 page_break_properties = ('page-break-before', 'page-break-after', 'page-break-inside')
+absolute_font_sizes = {
+    'xx-small': '0.5rem', 'x-small': '0.625rem', 'small': '0.8rem',
+    'medium': '1rem',
+    'large': '1.125rem', 'x-large': '1.5rem', 'xx-large': '2rem', 'xxx-large': '2.55rem'
+}
+nonstandard_writing_mode_property_names = ('-webkit-writing-mode', '-epub-writing-mode')
 
 
 def transform_declaration(decl):
     decl = StyleDeclaration(decl)
     changed = False
+    nonstandard_writing_mode_props = {}
+    standard_writing_mode_props = {}
+
     for prop, parent_prop in tuple(decl):
         if prop.name in page_break_properties:
             changed = True
@@ -148,11 +155,29 @@ def transform_declaration(decl):
                 decl.set_property(prefix + name, prop.value, prop.priority)
             decl.remove_property(prop, parent_prop)
         elif prop.name == 'font-size':
-            l, unit = parse_css_length(prop.value)
+            raw = prop.value
+            afs = absolute_font_sizes.get(raw)
+            if afs is not None:
+                changed = True
+                decl.change_property(prop, parent_prop, afs)
+                continue
+            l, unit = parse_css_length(raw)
             if unit in absolute_units:
                 changed = True
                 l = convert_fontsize(l, unit)
                 decl.change_property(prop, parent_prop, unicode_type(l) + 'rem')
+        elif prop.name in nonstandard_writing_mode_property_names:
+            nonstandard_writing_mode_props[prop.value] = prop.priority
+        elif prop.name == 'writing-mode':
+            standard_writing_mode_props[prop.value] = True
+
+    # Add standard writing-mode properties if they don't exist so that
+    # all of the browsers supported by the viewer work in vertical modes
+    for value, priority in nonstandard_writing_mode_props.items():
+        if value not in standard_writing_mode_props:
+            decl.set_property('writing-mode', value, priority)
+            changed = True
+
     return changed
 
 
@@ -630,6 +655,12 @@ def process_exploded_book(
     spineq = frozenset(spine)
     landmarks = [l for l in get_landmarks(container) if l['dest'] in spineq]
 
+    page_progression_direction = None
+    try:
+        page_progression_direction = container.opf_xpath('//opf:spine/@page-progression-direction')[0]
+    except IndexError:
+        pass
+
     book_render_data = {
         'version': RENDER_VERSION,
         'toc':toc,
@@ -646,6 +677,7 @@ def process_exploded_book(
         'toc_anchor_map': toc_anchor_map(toc),
         'landmarks': landmarks,
         'link_to_map': {},
+        'page_progression_direction': page_progression_direction,
     }
 
     names = sorted(
@@ -773,25 +805,13 @@ def serialize_datetimes(d):
 EPUB_FILE_TYPE_MAGIC = b'encoding=json+base64:\n'
 
 
-def parse_annotation(annot):
-    ts = annot['timestamp']
-    if hasattr(ts, 'rstrip'):
-        annot['timestamp'] = parse_iso8601(ts, assume_utc=True)
-    return annot
-
-
-def parse_annotations(raw):
-    for annot in json_loads(raw):
-        yield parse_annotation(annot)
-
-
 def get_stored_annotations(container, bookmark_data):
     raw = bookmark_data or b''
     if not raw:
         return
     if raw.startswith(EPUB_FILE_TYPE_MAGIC):
         raw = raw[len(EPUB_FILE_TYPE_MAGIC):].replace(b'\n', b'')
-        for annot in parse_annotations(from_base64_bytes(raw)):
+        for annot in json_loads(from_base64_bytes(raw)):
             yield annot
         return
 
@@ -882,5 +902,15 @@ def profile():
         )
 
 
+def develop():
+    from calibre.ptempfile import TemporaryDirectory
+    path = sys.argv[-1]
+    with TemporaryDirectory() as tdir:
+        return render(
+            path, tdir, serialize_metadata=True,
+            extract_annotations=True, virtualize_resources=False, max_workers=1
+        )
+
+
 if __name__ == '__main__':
-    profile()
+    develop()

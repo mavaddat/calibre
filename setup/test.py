@@ -1,8 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 import os
 import unittest
@@ -55,6 +54,11 @@ class TestImports(unittest.TestCase):
         self.assertGreater(self.base_check(os.path.join(SRC, 'odf'), exclude_packages, exclude_modules), 10)
         base = os.path.join(SRC, 'calibre')
         self.assertGreater(self.base_check(base, exclude_packages, exclude_modules), 1000)
+
+        import calibre.web.feeds.feedparser as f
+        del f
+        from calibre.ebooks.markdown import Markdown
+        del Markdown
 
 
 def find_tests(which_tests=None, exclude_tests=None):
@@ -116,6 +120,8 @@ def find_tests(which_tests=None, exclude_tests=None):
         a(find_tests())
         from calibre.utils.xml_parse import find_tests
         a(find_tests())
+        from calibre.gui2.viewer.annotations import find_tests
+        a(find_tests())
     if ok('misc'):
         from calibre.ebooks.metadata.tag_mapper import find_tests
         a(find_tests())
@@ -175,3 +181,12 @@ class Test(Command):
         if opts.exclude_test_name:
             tests = remove_tests_by_name(tests, *opts.exclude_test_name)
         run_cli(tests, verbosity=opts.test_verbosity)
+
+
+class TestRS(Command):
+
+    description = 'Run tests for RapydScript code'
+
+    def run(self, opts):
+        from calibre.utils.rapydscript import run_rapydscript_tests
+        run_rapydscript_tests()

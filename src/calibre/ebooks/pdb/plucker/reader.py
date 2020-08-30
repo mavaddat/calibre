@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import absolute_import, division, print_function, unicode_literals
 
 
 __license__   = 'GPL v3'
@@ -213,7 +212,7 @@ class SectionMetadata(object):
             # ExceptionalCharSets
             elif type == 2:
                 ii_adv = 0
-                for ii in range(length / 2):
+                for ii in range(length // 2):
                     uid, = struct.unpack('>H', raw[6+adv+ii_adv:8+adv+ii_adv])
                     mib, = struct.unpack('>H', raw[8+adv+ii_adv:10+adv+ii_adv])
                     self.exceptional_uid_encodings[uid] = MIBNUM_TO_NAME.get(mib, 'latin-1')

@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal kovid@kovidgoyal.net'
@@ -25,7 +25,7 @@ from calibre.library.custom_columns import CustomColumns
 from calibre.library.sqlite import connect, IntegrityError
 from calibre.library.prefs import DBPrefs
 from calibre.ebooks.metadata.book.base import Metadata
-from calibre.constants import preferred_encoding, iswindows, filesystem_encoding, ispy3
+from calibre.constants import preferred_encoding, iswindows, filesystem_encoding
 from calibre.ptempfile import (PersistentTemporaryFile,
         base_dir, SpooledTemporaryFile)
 from calibre.customize.ui import (run_plugins_on_import,
@@ -494,7 +494,7 @@ class LibraryDatabase2(LibraryDatabase, SchemaUpgrade, CustomColumns):
                     traceback.print_exc()
 
         if len(saved_searches().names()):
-            self.field_metadata.add_search_category(label='search', name=_('Searches'))
+            self.field_metadata.add_search_category(label='search', name=_('Saved searches'))
 
         self.field_metadata.add_grouped_search_terms(
                                     self.prefs.get('grouped_search_terms', {}))
@@ -1752,10 +1752,7 @@ class LibraryDatabase2(LibraryDatabase, SchemaUpgrade, CustomColumns):
             return 'n=%s s=%s c=%d rt=%d rc=%d id=%s' % (
                 self.n, self.s, self.c, self.rt, self.rc, self.id)
 
-        if ispy3:
-            __str__ = __unicode_representation__
-        else:
-            __str__ = __unicode__ = __unicode_representation__
+        __str__ = __unicode_representation__
 
     def clean_user_categories(self):
         user_cats = self.prefs.get('user_categories', {})

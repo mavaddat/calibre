@@ -1,5 +1,5 @@
-#!/usr/bin/env  python2
-from __future__ import absolute_import, division, print_function, unicode_literals
+#!/usr/bin/env python
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal kovid@kovidgoyal.net'
@@ -142,7 +142,7 @@ def convert_bulk_ebook(parent, queue, db, book_ids, out_format=None, args=[]):
     has_saved_settings = db.has_conversion_options(book_ids)
 
     d = BulkConfig(parent, db, out_format,
-            has_saved_settings=has_saved_settings)
+            has_saved_settings=has_saved_settings, book_ids=book_ids)
     if d.exec_() != QDialog.Accepted:
         return None
 

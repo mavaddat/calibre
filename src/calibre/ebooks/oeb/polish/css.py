@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -18,6 +18,7 @@ from calibre.ebooks.oeb.polish.pretty import pretty_script_or_style, pretty_xml_
 from calibre.utils.icu import numeric_sort_key
 from css_selectors import Select, SelectorError
 from polyglot.builtins import iteritems, itervalues, unicode_type, filter
+from polyglot.functools import lru_cache
 
 
 def filter_used_rules(rules, log, select):
@@ -291,6 +292,7 @@ def _classes_in_selector(selector, classes):
         classes.add(cn)
 
 
+@lru_cache(maxsize=4096)
 def classes_in_selector(text):
     classes = set()
     try:

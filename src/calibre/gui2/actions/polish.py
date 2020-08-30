@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:fdm=marker:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -130,9 +130,9 @@ class Polish(QDialog):  # {{{
         self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        self.save_button = sb = bb.addButton(_('&Save Settings'), bb.ActionRole)
+        self.save_button = sb = bb.addButton(_('&Save settings'), bb.ActionRole)
         sb.clicked.connect(self.save_settings)
-        self.load_button = lb = bb.addButton(_('&Load Settings'), bb.ActionRole)
+        self.load_button = lb = bb.addButton(_('&Load settings'), bb.ActionRole)
         self.load_menu = QMenu(lb)
         lb.setMenu(self.load_menu)
         self.all_button = b = bb.addButton(_('Select &all'), bb.ActionRole)

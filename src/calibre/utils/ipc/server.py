@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -18,8 +18,8 @@ from math import ceil
 from multiprocessing.connection import Listener, arbitrary_address
 from threading import RLock, Thread
 
-from calibre import detect_ncpus as cpu_count
-from calibre.constants import DEBUG, islinux, iswindows, ispy3
+from calibre import detect_ncpus as cpu_count, force_unicode
+from calibre.constants import DEBUG, islinux, iswindows
 from calibre.ptempfile import base_dir
 from calibre.utils.ipc import eintr_retry_call
 from calibre.utils.ipc.launch import Worker
@@ -107,7 +107,8 @@ if islinux:
             Listener.__init__(self, *args, **kwargs)
             # multiprocessing tries to call unlink even on abstract
             # named sockets, prevent it from doing so.
-            self._listener._unlink.cancel()
+            if self._listener._unlink is not None:
+                self._listener._unlink.cancel()
             # Prevent child processes from inheriting this socket
             # If we dont do this child processes not created by calibre, will
             # inherit this socket, preventing the calibre GUI from being restarted.
@@ -137,8 +138,6 @@ if islinux:
         prefix = '\0calibre-ipc-listener-%d-%%d' % os.getpid()
         while True:
             address = (prefix % next(_name_counter))
-            if not ispy3 and not isinstance(address, bytes):
-                address = address.encode('ascii')
             try:
                 l = LinuxListener(address=address, authkey=authkey, backlog=backlog)
                 return address, l
@@ -161,8 +160,6 @@ else:
         while max_tries > 0:
             max_tries -= 1
             address = prefix % next(_name_counter)
-            if not ispy3 and not isinstance(address, bytes):
-                address = address.encode('utf-8')  # multiprocessing needs bytes in python 2
             try:
                 return address, Listener(address=address, authkey=authkey, backlog=backlog)
             except EnvironmentError as err:
@@ -227,7 +224,7 @@ class Server(Thread):
               }
         cw = self.do_launch(env, gui, redirect_output, rfile, job_name=job_name)
         if isinstance(cw, string_or_bytes):
-            raise CriticalError('Failed to launch worker process:\n'+cw)
+            raise CriticalError('Failed to launch worker process:\n'+force_unicode(cw))
         if DEBUG:
             print('Worker Launch took:', time.time() - start)
         return cw

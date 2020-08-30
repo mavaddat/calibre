@@ -172,7 +172,7 @@ you can using the Tag browser in the main program.
 
 A much loved feature of the main program, :guilabel:`Virtual libraries` is
 present in the server interface as well. Click the three vertical dots in the
-top right corner to choose a virtual library.
+top right corner to choose a Virtual library.
 
 The book reader
 ^^^^^^^^^^^^^^^^
@@ -189,7 +189,7 @@ you can force a sync by tapping in the top quarter and choosing
 :guilabel:`Sync`.
 
 .. note:: On initial release, the book reader is fully functional but is
-    missing some more advanced features from the main calibre viewer, such as
+    missing some more advanced features from the main calibre E-book viewer, such as
     popup footnotes, bookmarks and annotations in general.
     These will be added in due course. In fact, the browser reader is designed
     to eventually replace the main viewer, once it matures.
@@ -294,7 +294,7 @@ Or, for Apache::
         ServerName myserver.example.com
         AllowEncodedSlashes On
         ProxyPreserveHost On
-        ProxyPass "/"  "http://localhost:8080"
+        ProxyPass "/"  "http://localhost:8080/"
     </VirtualHost>
 
 

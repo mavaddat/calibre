@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -318,7 +318,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         self.ctrl_esc_action = QAction(self)
         self.addAction(self.ctrl_esc_action)
         self.keyboard.register_shortcut('clear virtual library',
-                _('Clear the virtual library'), default_keys=('Ctrl+Esc',),
+                _('Clear the Virtual library'), default_keys=('Ctrl+Esc',),
                 action=self.ctrl_esc_action)
         self.ctrl_esc_action.triggered.connect(self.ctrl_esc)
 

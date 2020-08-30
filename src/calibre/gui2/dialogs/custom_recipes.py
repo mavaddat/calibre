@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=utf-8
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__ = 'GPL v3'
 __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
@@ -13,7 +13,7 @@ from PyQt5.Qt import (
     QFormLayout, QSpinBox, QLineEdit, QGroupBox, QListWidget, QListWidgetItem,
     QToolButton, QTreeView)
 
-from calibre.gui2 import error_dialog, open_local_file, choose_files
+from calibre.gui2 import error_dialog, open_local_file, choose_files, choose_save_file
 from calibre.gui2.widgets2 import Dialog
 from calibre.web.feeds.recipes import custom_recipes, compile_recipe
 from calibre.gui2.tweak_book.editor.text import TextEdit
@@ -21,6 +21,7 @@ from calibre.web.feeds.recipes.collection import get_builtin_recipe_by_id
 from calibre.utils.localization import localize_user_manual_link
 from polyglot.builtins import iteritems, unicode_type, range, as_unicode
 from calibre.gui2.search_box import SearchBox2
+from polyglot.builtins import as_bytes
 
 
 def is_basic_recipe(src):
@@ -37,6 +38,11 @@ class CustomRecipeModel(QAbstractListModel):  # {{{
         row = index.row()
         if row > -1 and row < self.rowCount():
             return self.recipe_model.custom_recipe_collection[row].get('title', '')
+
+    def urn(self, index):
+        row = index.row()
+        if row > -1 and row < self.rowCount():
+            return self.recipe_model.custom_recipe_collection[row].get('id')
 
     def has_title(self, title):
         for x in self.recipe_model.custom_recipe_collection:
@@ -137,9 +143,8 @@ def options_to_recipe_source(title, oldest_article, max_articles_per_feed, feeds
     if feeds:
         feeds = 'feeds          = [\n%s\n    ]' % feeds
     src = textwrap.dedent('''\
-    #!/usr/bin/env python2
+    #!/usr/bin/env python
     # vim:fileencoding=utf-8
-    from __future__ import unicode_literals, division, absolute_import, print_function
     from calibre.web.feeds.news import {base}
 
     class {classname}({base}):
@@ -194,6 +199,14 @@ class RecipeList(QWidget):  # {{{
         b.clicked.connect(self.remove)
         b.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
         l.addWidget(b)
+        self.export_button = b = QPushButton(QIcon(I('save.png')), _('S&ave recipe as file'), w)
+        b.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+        b.clicked.connect(self.save_recipe)
+        l.addWidget(b)
+        self.download_button = b = QPushButton(QIcon(I('download-metadata.png')), _('&Download this recipe'), w)
+        b.clicked.connect(self.download)
+        b.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
+        l.addWidget(b)
 
         self.select_row()
         v.selectionModel().currentRowChanged.connect(self.recipe_selected)
@@ -233,6 +246,21 @@ class RecipeList(QWidget):  # {{{
             if src is not None:
                 self.edit_recipe.emit(idx.row(), src)
 
+    def save_recipe(self):
+        idx = self.view.currentIndex()
+        if idx.isValid():
+            src = self.model.script(idx)
+            if src is not None:
+                path = choose_save_file(
+                    self, 'save-custom-recipe', _('Save recipe'),
+                    filters=[(_('Recipes'), ['recipe'])],
+                    all_files=False,
+                    initial_filename='{}.recipe'.format(self.model.title(idx))
+                )
+                if path:
+                    with open(path, 'wb') as f:
+                        f.write(as_bytes(src))
+
     def item_activated(self, idx):
         if idx.isValid():
             src = self.model.script(idx)
@@ -246,6 +274,15 @@ class RecipeList(QWidget):  # {{{
             self.select_row()
             if self.model.rowCount() == 0:
                 self.stacks.setCurrentIndex(0)
+
+    def download(self):
+        idx = self.view.currentIndex()
+        if idx.isValid():
+            urn = self.model.urn(idx)
+            title = self.model.title(idx)
+            from calibre.gui2.ui import get_gui
+            gui = get_gui()
+            gui.iactions['Fetch News'].download_custom_recipe(title, urn)
 
     def has_title(self, title):
         return self.model.has_title(title)
@@ -531,7 +568,7 @@ class CustomRecipes(Dialog):
         la = lambda *args:self.list_actions.append(args)
         la('plus.png', _('&New recipe'), _('Create a new recipe from scratch'), self.add_recipe)
         la('news.png', _('Customize &builtin recipe'), _('Customize a builtin news download source'), self.customize_recipe)
-        la('document_open.png', _('Load recipe from &file'), _('Load a recipe from a &file'), self.load_recipe)
+        la('document_open.png', _('Load recipe from &file'), _('Load a recipe from a file'), self.load_recipe)
         la('mimetypes/dir.png', _('&Show recipe files'), _('Show the folder containing all recipe files'), self.show_recipe_files)
         la('mimetypes/opml.png', _('Import &OPML'), _(
             "Import a collection of RSS feeds in OPML format\n"

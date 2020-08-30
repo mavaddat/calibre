@@ -31,6 +31,7 @@ defaults = {
     'book_scrollbar': False,
     'columns_per_screen': {'portrait':0, 'landscape':0},
     'controls_help_shown_count': 0,
+    'controls_help_shown_count_rtl_page_progression': 0,
     'cover_preserve_aspect_ratio': True,
     'current_color_scheme': 'system',
     'footer': {'right': 'progress'},
@@ -50,6 +51,8 @@ defaults = {
     'override_book_colors': 'never',
     'paged_margin_clicks_scroll_by_screen': True,
     'paged_wheel_scrolls_by_screen': False,
+    'paged_taps_scroll_by_screen': False,
+    'paged_pixel_scroll_threshold': 60,
     'read_mode': 'paged',
     'scroll_auto_boundary_delay': 5,
     'scroll_stop_boundaries': False,
@@ -59,6 +62,12 @@ defaults = {
     'user_color_schemes': {},
     'user_stylesheet': '',
     'word_actions': v'[]',
+    'highlight_style': None,
+    'custom_highlight_styles': v'[]',
+    'show_selection_bar': True,
+    'net_search_url': 'https://google.com/search?q={q}',
+    'selection_bar_actions': v"['copy', 'lookup', 'highlight', 'remove_highlight', 'search_net', 'clear']",
+    'selection_bar_quick_highlights': v"[]",
 }
 
 is_local_setting = {
@@ -68,6 +77,7 @@ is_local_setting = {
     'base_font_size': True,
     'columns_per_screen': True,
     'controls_help_shown_count': True,
+    'controls_help_shown_count_rtl_page_progression': True,
     'current_color_scheme': True,
     'lines_per_sec_auto': True,
     'lines_per_sec_smooth': True,
@@ -85,6 +95,7 @@ is_local_setting = {
     'standalone_misc_settings': True,
     'standalone_recently_opened': True,
     'user_stylesheet': True,
+    'highlight_style': True,
 }
 
 

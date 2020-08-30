@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 # vim:fileencoding=UTF-8:ts=4:sw=4:sta:et:sts=4:ai
-from __future__ import absolute_import, division, print_function, unicode_literals
+
 
 __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
@@ -36,7 +36,7 @@ class Device(object):
 
     output_profile = 'generic_eink'
     output_format = 'EPUB'
-    name = 'Generic e-ink device'
+    name = _('Generic e-ink device')
     manufacturer = 'Generic'
     id = 'default'
     supports_color = False
@@ -68,14 +68,14 @@ class Device(object):
 class Smartphone(Device):
 
     id = 'smartphone'
-    name = 'Smartphone'
+    name = _('Smartphone')
     supports_color = True
 
 
 class Tablet(Device):
 
     id = 'tablet'
-    name = 'iPad like tablet'
+    name = _('iPad like tablet')
     output_profile = 'tablet'
     supports_color = True
 
@@ -84,7 +84,7 @@ class Kindle(Device):
 
     output_profile = 'kindle'
     output_format  = 'MOBI'
-    name = 'Kindle Basic (all models)'
+    name = _('Kindle Basic (all models)')
     manufacturer = 'Amazon'
     id = 'kindle'
 
@@ -116,7 +116,7 @@ class KindleDX(Kindle):
 
 
 class KindleFire(KindleDX):
-    name = 'Kindle Fire and Fire HD'
+    name = _('{0} and {1}').format('Kindle Fire', 'Fire HD')
     id = 'kindle_fire'
     output_profile = 'kindle_fire'
     supports_color = True
@@ -137,14 +137,14 @@ class KindleVoyage(Kindle):
 class Sony505(Device):
 
     output_profile = 'sony'
-    name = 'All other SONY devices'
+    name = _('All other SONY devices')
     output_format = 'EPUB'
     manufacturer = 'SONY'
     id = 'prs505'
 
 
 class Kobo(Device):
-    name = 'Kobo and Kobo Touch Readers'
+    name = _('Kobo and Kobo Touch Readers')
     manufacturer = 'Kobo'
     output_profile = 'kobo'
     output_format = 'EPUB'
@@ -152,7 +152,7 @@ class Kobo(Device):
 
 
 class KoboVox(Kobo):
-    name = 'Kobo Vox, Aura and Glo families'
+    name = _('Kobo Vox, Aura and Glo families')
     output_profile = 'tablet'
     id = 'kobo_vox'
 
@@ -192,7 +192,7 @@ class BooqCervantes(Booq):
 
 
 class BOOX(Device):
-    name = 'BOOX MAX, N96, i86, C67ML, M96, etc.'
+    name = _('BOOX MAX, N96, i86, C67ML, M96, etc.')
     manufacturer = 'Onyx'
     output_profile = 'generic_eink_hd'
     output_format = 'EPUB'
@@ -222,7 +222,7 @@ class SonyT3(Sony505):
 
 class Nook(Sony505):
     id = 'nook'
-    name = 'Nook and Nook Simple Reader'
+    name = _('{0} and {1}').format('Nook', 'Nook Simple Reader')
     manufacturer = 'Barnes & Noble'
     output_profile = 'nook'
 
@@ -276,10 +276,17 @@ class CybookMuse(CybookOpus):
     output_profile = 'tablet'
 
 
+class BookeenDiva(CybookOpus):
+
+    name = 'Bookeen Diva HD'
+    id = 'bookeen_diva'
+    output_profile = 'tablet'
+
+
 class PocketBook360(CybookOpus):
 
     manufacturer = 'PocketBook'
-    name = 'PocketBook 360 and newer models'
+    name = _('PocketBook 360 and newer models')
     id = 'pocketbook360'
     output_profile = 'cybook_opus'
 
@@ -318,7 +325,7 @@ class iPhone(Device):
 
 class Android(Device):
 
-    name = 'Android phone'
+    name = _('Android phone')
     output_format = 'EPUB'
     manufacturer = 'Android'
     id = 'android'
@@ -335,14 +342,14 @@ class Android(Device):
 
 class AndroidTablet(Android):
 
-    name = 'Android tablet'
+    name = _('Android tablet')
     id = 'android_tablet'
     output_profile = 'tablet'
 
 
 class AndroidPhoneWithKindle(Android):
 
-    name = 'Android phone with Kindle reader'
+    name = _('Android phone with Kindle reader')
     output_format = 'MOBI'
     id = 'android_phone_with_kindle'
     output_profile = 'kindle'
@@ -358,7 +365,7 @@ class AndroidPhoneWithKindle(Android):
 
 class AndroidTabletWithKindle(AndroidPhoneWithKindle):
 
-    name = 'Android tablet with Kindle reader'
+    name = _('Android tablet with Kindle reader')
     id = 'android_tablet_with_kindle'
     output_profile = 'kindle_fire'
 
@@ -443,7 +450,10 @@ class ManufacturerModel(QAbstractListModel):
 
     def data(self, index, role):
         if role == Qt.DisplayRole:
-            return (self.manufacturers[index.row()])
+            ans = self.manufacturers[index.row()]
+            if ans == Device.manufacturer:
+                ans = _('Generic')
+            return ans
         if role == Qt.UserRole:
             return self.manufacturers[index.row()]
         return None
@@ -591,7 +601,7 @@ class DevicePage(QWizardPage, DeviceUI):
 
     def initializePage(self):
         self.label.setText(_('Choose your e-book device. If your device is'
-            ' not in the list, choose a "%s" device.')%Device.manufacturer)
+            ' not in the list, choose a "Generic" device.'))
         self.man_model = ManufacturerModel()
         self.manufacturer_view.setModel(self.man_model)
         previous = dynamic.get('welcome_wizard_device', False)
