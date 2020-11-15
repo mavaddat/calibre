@@ -3,7 +3,7 @@
 # License: GPLv3 Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>
 
 
-import re, numbers
+import regex, numbers
 from collections import defaultdict, namedtuple
 from io import BytesIO
 from threading import Thread
@@ -491,7 +491,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.comments = null
         self.comments_button.clicked.connect(self.set_comments)
 
-        all_tags = self.db.all_tags()
+        all_tags = self.db.new_api.all_field_names('tags')
         self.tags.update_items_cache(all_tags)
         self.remove_tags.update_items_cache(all_tags)
 
@@ -555,7 +555,6 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.languages.setEditText('')
         self.authors.setFocus(Qt.OtherFocusReason)
         self.generate_cover_settings = None
-        self.button_config_cover_gen.setVisible(False)
         self.button_config_cover_gen.clicked.connect(self.customize_cover_generation)
         self.exec_()
 
@@ -974,22 +973,22 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
     def s_r_paint_results(self, txt):
         self.s_r_error = None
         self.s_r_set_colors()
+        flags = regex.FULLCASE | regex.UNICODE
 
         if self.case_sensitive.isChecked():
-            flags = 0
-        else:
-            flags = re.I
-
-        flags |= re.UNICODE
+            flags |= regex.IGNORECASE
 
         try:
             stext = unicode_type(self.search_for.text())
             if not stext:
                 raise Exception(_('You must specify a search expression in the "Search for" field'))
             if self.search_mode.currentIndex() == 0:
-                self.s_r_obj = re.compile(re.escape(stext), flags)
+                self.s_r_obj = regex.compile(regex.escape(stext), flags | regex.V1)
             else:
-                self.s_r_obj = re.compile(stext, flags)
+                try:
+                    self.s_r_obj = regex.compile(stext, flags | regex.V1)
+                except regex.error:
+                    self.s_r_obj = regex.compile(stext, flags)
         except Exception as e:
             self.s_r_obj = None
             self.s_r_error = e
@@ -1095,21 +1094,18 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.authors.set_separator('&')
         self.authors.set_space_before_sep(True)
         self.authors.set_add_separator(tweaks['authors_completer_append_separator'])
-        self.authors.update_items_cache(self.db.all_author_names())
+        self.authors.update_items_cache(self.db.new_api.all_field_names('authors'))
         self.authors.show_initial_value('')
 
     def initialize_series(self):
-        all_series = self.db.all_series()
-        all_series.sort(key=lambda x : sort_key(x[1]))
         self.series.set_separator(None)
-        self.series.update_items_cache([x[1] for x in all_series])
+        self.series.update_items_cache(self.db.new_api.all_field_names('series'))
         self.series.show_initial_value('')
+        self.publisher.set_add_separator(False)
 
     def initialize_publisher(self):
-        all_publishers = self.db.all_publishers()
-        all_publishers.sort(key=lambda x : sort_key(x[1]))
-        self.publisher.set_separator(None)
-        self.publisher.update_items_cache([x[1] for x in all_publishers])
+        self.publisher.update_items_cache(self.db.new_api.all_field_names('publisher'))
+        self.publisher.set_add_separator(False)
         self.publisher.show_initial_value('')
 
     def tag_editor(self, *args):
@@ -1118,8 +1114,9 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         if d.result() == QDialog.Accepted:
             tag_string = ', '.join(d.tags)
             self.tags.setText(tag_string)
-            self.tags.update_items_cache(self.db.all_tags())
-            self.remove_tags.update_items_cache(self.db.all_tags())
+            all_tags = self.db.new_api.all_field_names('tags')
+            self.tags.update_items_cache(all_tags)
+            self.remove_tags.update_items_cache(all_tags)
 
     def auto_number_changed(self, state):
         self.series_start_number.setEnabled(bool(state))

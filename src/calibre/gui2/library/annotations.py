@@ -5,13 +5,12 @@
 import codecs
 import json
 import os
-from textwrap import fill
-
+from functools import partial
 from PyQt5.Qt import (
     QApplication, QCheckBox, QComboBox, QCursor, QDateTime, QFont, QFormLayout,
-    QHBoxLayout, QIcon, QLabel, QPalette, QPlainTextEdit, QSize, QSplitter, Qt,
-    QTextBrowser, QTimer, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
-    QWidget, pyqtSignal
+    QHBoxLayout, QIcon, QKeySequence, QLabel, QMenu, QPalette, QPlainTextEdit, QSize,
+    QSplitter, Qt, QTextBrowser, QTimer, QToolButton, QTreeWidget, QTreeWidgetItem,
+    QVBoxLayout, QWidget, pyqtSignal
 )
 
 from calibre import prepare_string_for_xml
@@ -22,6 +21,7 @@ from calibre.gui2.viewer.widgets import ResultsDelegate, SearchBox
 from calibre.gui2.widgets2 import Dialog
 
 
+# rendering {{{
 def render_highlight_as_text(hl, lines):
     lines.append(hl['highlighted_text'])
     date = QDateTime.fromString(hl['timestamp'], Qt.ISODate).toLocalTime().toString(Qt.SystemLocaleShortDate)
@@ -44,7 +44,61 @@ def render_bookmark_as_text(b, lines):
     lines.append('')
 
 
-class Export(Dialog):
+def render_notes(notes, tag='p'):
+    current_lines = []
+    for line in notes.splitlines():
+        if line:
+            current_lines.append(line)
+        else:
+            if current_lines:
+                yield '<{0}>{1}</{0}>'.format(tag, '\n'.join(current_lines))
+                current_lines = []
+    if current_lines:
+        yield '<{0}>{1}</{0}>'.format(tag, '\n'.join(current_lines))
+
+
+def friendly_username(user_type, user):
+    key = user_type, user
+    if key == ('web', '*'):
+        return _('Anonymous Content server user')
+    if key == ('local', 'viewer'):
+        return _('Local E-book viewer user')
+    return user
+
+
+def annotation_title(atype, singular=False):
+    if singular:
+        return {'bookmark': _('Bookmark'), 'highlight': _('Highlight')}.get(atype, atype)
+    return {'bookmark': _('Bookmarks'), 'highlight': _('Highlights')}.get(atype, atype)
+
+
+class AnnotsResultsDelegate(ResultsDelegate):
+
+    add_ellipsis = False
+    emphasize_text = False
+
+    def result_data(self, result):
+        if not isinstance(result, dict):
+            return None, None, None, None
+        full_text = result['text'].replace('\x1f', ' ')
+        parts = full_text.split('\x1d', 2)
+        before = after = ''
+        if len(parts) > 2:
+            before, text = parts[:2]
+            after = parts[2].replace('\x1d', '')
+        elif len(parts) == 2:
+            before, text = parts
+        else:
+            text = parts[0]
+        if result.get('annotation', {}).get('notes'):
+            before = '•' + (before or '')
+        return False, before, text, after
+
+
+# }}}
+
+
+class Export(Dialog):  # {{{
 
     prefs = gprefs
     pref_name = 'annots_export_format'
@@ -121,39 +175,12 @@ class Export(Dialog):
                     render_bookmark_as_text(a, lines)
             lines.append('')
         return '\n'.join(lines).strip()
-
-
-def render_notes(notes, tag='p'):
-    current_lines = []
-    for line in notes.splitlines():
-        if line:
-            current_lines.append(line)
-        else:
-            if current_lines:
-                yield '<{0}>{1}</{0}>'.format(tag, '\n'.join(current_lines))
-                current_lines = []
-    if current_lines:
-        yield '<{0}>{1}</{0}>'.format(tag, '\n'.join(current_lines))
-
-
-def friendly_username(user_type, user):
-    key = user_type, user
-    if key == ('web', '*'):
-        return _('Anonymous Content server user')
-    if key == ('local', 'viewer'):
-        return _('Local viewer user')
-    return user
+# }}}
 
 
 def current_db():
     from calibre.gui2.ui import get_gui
     return (getattr(current_db, 'ans', None) or get_gui().current_db).new_api
-
-
-def annotation_title(atype, singular=False):
-    if singular:
-        return {'bookmark': _('Bookmark'), 'highlight': _('Highlight')}.get(atype, atype)
-    return {'bookmark': _('Bookmarks'), 'highlight': _('Highlights')}.get(atype, atype)
 
 
 class BusyCursor(object):
@@ -165,36 +192,21 @@ class BusyCursor(object):
         QApplication.restoreOverrideCursor()
 
 
-class AnnotsResultsDelegate(ResultsDelegate):
-
-    add_ellipsis = False
-    emphasize_text = True
-
-    def result_data(self, result):
-        if not isinstance(result, dict):
-            return None, None, None, None
-        full_text = result['text'].replace('\x1f', ' ')
-        parts = full_text.split('\x1d', 2)
-        before = after = ''
-        if len(parts) > 2:
-            before, text = parts[:2]
-            after = parts[2].replace('\x1d', '')
-        elif len(parts) == 2:
-            before, text = parts
-        else:
-            text = parts[0]
-        return False, before, text, after
-
-
 class ResultsList(QTreeWidget):
 
     current_result_changed = pyqtSignal(object)
     open_annotation = pyqtSignal(object, object, object)
+    show_book = pyqtSignal(object, object)
+    delete_requested = pyqtSignal()
+    export_requested = pyqtSignal()
+    edit_annotation = pyqtSignal(object, object)
 
     def __init__(self, parent):
         QTreeWidget.__init__(self, parent)
         self.setHeaderHidden(True)
         self.setSelectionMode(self.ExtendedSelection)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.show_context_menu)
         self.delegate = AnnotsResultsDelegate(self)
         self.setItemDelegate(self.delegate)
         self.section_font = QFont(self.font())
@@ -203,6 +215,35 @@ class ResultsList(QTreeWidget):
         self.currentItemChanged.connect(self.current_item_changed)
         self.number_of_results = 0
         self.item_map = []
+
+    def show_context_menu(self, pos):
+        item = self.itemAt(pos)
+        result = item.data(0, Qt.UserRole)
+        items = self.selectedItems()
+        m = QMenu(self)
+        if isinstance(result, dict):
+            m.addAction(_('Open in viewer'), partial(self.item_activated, item))
+            m.addAction(_('Show in calibre'), partial(self.show_in_calibre, item))
+            if result.get('annotation', {}).get('type') == 'highlight':
+                m.addAction(_('Edit notes'), partial(self.edit_notes, item))
+        if items:
+            m.addSeparator()
+            m.addAction(ngettext('Export selected item', 'Export {} selected items', len(items)).format(len(items)), self.export_requested.emit)
+            m.addAction(ngettext('Delete selected item', 'Delete {} selected items', len(items)).format(len(items)), self.delete_requested.emit)
+        m.addSeparator()
+        m.addAction(_('Expand all'), self.expandAll)
+        m.addAction(_('Collapse all'), self.collapseAll)
+        m.exec_(self.mapToGlobal(pos))
+
+    def edit_notes(self, item):
+        r = item.data(0, Qt.UserRole)
+        if isinstance(r, dict):
+            self.edit_annotation.emit(r['id'], r['annotation'])
+
+    def show_in_calibre(self, item):
+        r = item.data(0, Qt.UserRole)
+        if isinstance(r, dict):
+            self.show_book.emit(r['book_id'], r['format'])
 
     def item_activated(self, item):
         r = item.data(0, Qt.UserRole)
@@ -254,16 +295,6 @@ class ResultsList(QTreeWidget):
         i %= self.number_of_results
         self.setCurrentItem(self.item_map[i])
 
-    def keyPressEvent(self, ev):
-        key = ev.key()
-        if key == Qt.Key_Down:
-            self.show_next()
-            return
-        if key == Qt.Key_Up:
-            self.show_next(backwards=True)
-            return
-        return QTreeWidget.keyPressEvent(self, ev)
-
     @property
     def selected_annot_ids(self):
         for item in self.selectedItems():
@@ -278,16 +309,28 @@ class ResultsList(QTreeWidget):
                 ans[key] = x[key]
             yield ans
 
+    def keyPressEvent(self, ev):
+        if ev.matches(QKeySequence.Delete):
+            self.delete_requested.emit()
+            ev.accept()
+            return
+        return QTreeWidget.keyPressEvent(self, ev)
+
 
 class Restrictions(QWidget):
 
     restrictions_changed = pyqtSignal()
 
     def __init__(self, parent):
+        self.restrict_to_book_ids = frozenset()
         QWidget.__init__(self, parent)
-        h = QHBoxLayout(self)
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        h = QHBoxLayout()
         h.setContentsMargins(0, 0, 0, 0)
-        h.addWidget(QLabel(_('Restrict to') + ': '))
+        v.addLayout(h)
+        self.rla = QLabel(_('Restrict to') + ': ')
+        h.addWidget(self.rla)
         la = QLabel(_('Types:'))
         h.addWidget(la)
         self.types_box = tb = QComboBox(self)
@@ -307,8 +350,42 @@ class Restrictions(QWidget):
         ub.setToolTip(_('Show only annotations created by the specified user'))
         h.addWidget(ub)
         h.addStretch(10)
+        h = QHBoxLayout()
+        self.restrict_to_books_cb = cb = QCheckBox('')
+        self.update_book_restrictions_text()
+        cb.setToolTip(_('Only show annotations from books that have been selected in the calibre library'))
+        cb.setChecked(bool(gprefs.get('show_annots_from_selected_books_only', False)))
+        cb.stateChanged.connect(self.show_only_selected_changed)
+        h.addWidget(cb)
+        v.addLayout(h)
 
-    def re_initialize(self, db):
+    def update_book_restrictions_text(self):
+        if not self.restrict_to_book_ids:
+            t = _('Show results from only selected books')
+        else:
+            t = ngettext(
+                'Show results from only the selected book',
+                'Show results from only the {} selected books',
+                len(self.restrict_to_book_ids)).format(len(self.restrict_to_book_ids))
+        self.restrict_to_books_cb.setText(t)
+
+    def show_only_selected_changed(self):
+        self.restrictions_changed.emit()
+        gprefs['show_annots_from_selected_books_only'] = bool(self.restrict_to_books_cb.isChecked())
+
+    def selection_changed(self, restrict_to_book_ids):
+        self.restrict_to_book_ids = frozenset(restrict_to_book_ids or set())
+        self.update_book_restrictions_text()
+        if self.restrict_to_books_cb.isChecked():
+            self.restrictions_changed.emit()
+
+    @property
+    def effective_restrict_to_book_ids(self):
+        return (self.restrict_to_book_ids or None) if self.restrict_to_books_cb.isChecked() else None
+
+    def re_initialize(self, db, restrict_to_book_ids=None):
+        self.restrict_to_book_ids = frozenset(restrict_to_book_ids or set())
+        self.update_book_restrictions_text()
         tb = self.types_box
         before = tb.currentData()
         if not before:
@@ -342,13 +419,18 @@ class Restrictions(QWidget):
         tb.blockSignals(False)
         ub_is_visible = tb.count() > 2
         tb.setVisible(ub_is_visible), tb.la.setVisible(ub_is_visible)
-        self.setVisible(tb_is_visible or ub_is_visible)
+        self.rla.setVisible(tb_is_visible or ub_is_visible)
+        self.setVisible(True)
 
 
 class BrowsePanel(QWidget):
 
     current_result_changed = pyqtSignal(object)
     open_annotation = pyqtSignal(object, object, object)
+    show_book = pyqtSignal(object, object)
+    delete_requested = pyqtSignal()
+    export_requested = pyqtSignal()
+    edit_annotation = pyqtSignal(object, object)
 
     def __init__(self, parent):
         QWidget.__init__(self, parent)
@@ -387,14 +469,21 @@ class BrowsePanel(QWidget):
         self.results_list = rl = ResultsList(self)
         rl.current_result_changed.connect(self.current_result_changed)
         rl.open_annotation.connect(self.open_annotation)
+        rl.show_book.connect(self.show_book)
+        rl.edit_annotation.connect(self.edit_annotation)
+        rl.delete_requested.connect(self.delete_requested)
+        rl.export_requested.connect(self.export_requested)
         l.addWidget(rl)
 
-    def re_initialize(self):
+    def re_initialize(self, restrict_to_book_ids=None):
         db = current_db()
         self.search_box.setFocus(Qt.OtherFocusReason)
-        self.restrictions.re_initialize(db)
+        self.restrictions.re_initialize(db, restrict_to_book_ids or set())
         self.current_query = None
         self.results_list.clear()
+
+    def selection_changed(self, restrict_to_book_ids):
+        self.restrictions.selection_changed(restrict_to_book_ids)
 
     def sizeHint(self):
         return QSize(450, 600)
@@ -414,6 +503,7 @@ class BrowsePanel(QWidget):
             'annotation_type': (atype or '').strip(),
             'restrict_to_user': self.restrict_to_user,
             'use_stemming': bool(self.use_stemmer.isChecked()),
+            'restrict_to_book_ids': self.restrictions.effective_restrict_to_book_ids,
         }
 
     def cleared(self):
@@ -430,12 +520,14 @@ class BrowsePanel(QWidget):
             if not q['fts_engine_query']:
                 results = db.all_annotations(
                     restrict_to_user=q['restrict_to_user'], limit=4096, annotation_type=q['annotation_type'],
-                    ignore_removed=True
+                    ignore_removed=True, restrict_to_book_ids=q['restrict_to_book_ids'] or None
                 )
             else:
+                q2 = q.copy()
+                q2['restrict_to_book_ids'] = q.get('restrict_to_book_ids') or None
                 results = db.search_annotations(
                     highlight_start='\x1d', highlight_end='\x1d', snippet_size=64,
-                    ignore_removed=True, **q
+                    ignore_removed=True, **q2
                 )
             self.results_list.set_results(results, bool(q['fts_engine_query']))
             self.current_query = q
@@ -586,7 +678,7 @@ class DetailsPanel(QWidget):
             <span>\xa0\xa0\xa0</span>
             <a title="{sictt}" href="calibre://show_in_library">{sic}</a>
         </div>
-        <h2 style="text-align: left">{atype}</h2>
+        <h3 style="text-align: left">{atype}</h3>
         {text}
         '''.format(
             title=a(title), authors=a(authors), series=a(series_text), book_format=a(book_format),
@@ -646,9 +738,9 @@ class AnnotationsBrowser(Dialog):
     def setup_ui(self):
         self.use_stemmer = us = QCheckBox(_('Match on related English words'))
         us.setChecked(gprefs['browse_annots_use_stemmer'])
-        us.setToolTip(fill(_(
+        us.setToolTip('<p>' + _(
             'With this option searching for words will also match on any related English words. For'
-            ' example: correction matches correcting and corrected as well')))
+            ' example: <i>correction</i> matches <i>correcting</i> and <i>corrected</i> as well'))
         us.stateChanged.connect(lambda state: gprefs.set('browse_annots_use_stemmer', state != Qt.Unchecked))
 
         l = QVBoxLayout(self)
@@ -659,6 +751,10 @@ class AnnotationsBrowser(Dialog):
 
         self.browse_panel = bp = BrowsePanel(self)
         bp.open_annotation.connect(self.do_open_annotation)
+        bp.show_book.connect(self.show_book)
+        bp.delete_requested.connect(self.delete_selected)
+        bp.export_requested.connect(self.export_selected)
+        bp.edit_annotation.connect(self.edit_annotation)
         s.addWidget(bp)
 
         self.details_panel = dp = DetailsPanel(self)
@@ -724,18 +820,23 @@ class AnnotationsBrowser(Dialog):
             db.update_annotations({annot_id: annot})
             self.details_panel.update_notes(annot)
 
-    def show_dialog(self):
+    def show_dialog(self, restrict_to_book_ids=None):
         if self.parent() is None:
             self.browse_panel.effective_query_changed()
             self.exec_()
         else:
-            self.reinitialize()
+            self.reinitialize(restrict_to_book_ids)
             self.show()
             self.raise_()
             QTimer.singleShot(80, self.browse_panel.effective_query_changed)
 
-    def reinitialize(self):
-        self.browse_panel.re_initialize()
+    def selection_changed(self):
+        if self.isVisible() and self.parent():
+            gui = self.parent()
+            self.browse_panel.selection_changed(gui.library_view.get_selected_ids(as_set=True))
+
+    def reinitialize(self, restrict_to_book_ids=None):
+        self.browse_panel.re_initialize(restrict_to_book_ids or set())
 
 
 if __name__ == '__main__':

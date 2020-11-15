@@ -120,6 +120,7 @@ class DBPrefs(dict):  # {{{
     def __setitem__(self, key, val):
         if not self.disable_setting:
             raw = self.to_raw(val)
+            do_set = False
             with self.db.conn:
                 try:
                     dbraw = next(self.db.execute('SELECT id,val FROM preferences WHERE key=?', (key,)))
@@ -130,7 +131,9 @@ class DBPrefs(dict):  # {{{
                         self.db.execute('INSERT INTO preferences (key,val) VALUES (?,?)', (key, raw))
                     else:
                         self.db.execute('UPDATE preferences SET val=? WHERE id=?', (raw, dbraw[0]))
-                    dict.__setitem__(self, key, val)
+                    do_set = True
+            if do_set:
+                dict.__setitem__(self, key, val)
 
     def set(self, key, val):
         self.__setitem__(key, val)
@@ -400,6 +403,7 @@ class DB(object):
     def __init__(self, library_path, default_prefs=None, read_only=False,
                  restore_all_prefs=False, progress_callback=lambda x, y:True,
                  load_user_formatter_functions=True):
+        self.is_closed = False
         try:
             if isbytestring(library_path):
                 library_path = library_path.decode(filesystem_encoding)
@@ -904,6 +908,7 @@ class DB(object):
     def conn(self):
         if self._conn is None:
             self._conn = Connection(self.dbpath)
+            self.is_closed = False
             if self._exists and self.user_version == 0:
                 self._conn.close()
                 os.remove(self.dbpath)
@@ -1145,6 +1150,7 @@ class DB(object):
                     pass
             self._conn.close(force)
             del self._conn
+            self.is_closed = True
 
     def reopen(self, force=False):
         self.close(force=force, unload_formatter_functions=False)
@@ -1791,7 +1797,7 @@ class DB(object):
         data = [fts_engine_query]
         if restrict_to_user:
             query += ' AND annotations.user_type = ? AND annotations.user = ?'
-            data += list(*restrict_to_user)
+            data += list(restrict_to_user)
         if annotation_type:
             query += ' AND annotations.annot_type = ? '
             data.append(annotation_type)
@@ -1799,6 +1805,8 @@ class DB(object):
         ls = json.loads
         try:
             for (rowid, book_id, fmt, user_type, user, annot_data, text) in self.execute(query, tuple(data)):
+                if restrict_to_book_ids is not None and book_id not in restrict_to_book_ids:
+                    continue
                 try:
                     parsed_annot = ls(annot_data)
                 except Exception:
@@ -1869,7 +1877,7 @@ class DB(object):
                     self.execute('UPDATE annotations SET annot_data=?, timestamp=?, annot_type=?, searchable_text=?, annot_id=? WHERE id=?',
                         (json.dumps(annot), timestamp, atype, text, aid, annot_id))
 
-    def all_annotations(self, restrict_to_user=None, limit=None, annotation_type=None, ignore_removed=False):
+    def all_annotations(self, restrict_to_user=None, limit=None, annotation_type=None, ignore_removed=False, restrict_to_book_ids=None):
         ls = json.loads
         q = 'SELECT id, book, format, user_type, user, annot_data FROM annotations'
         data = []
@@ -1885,6 +1893,8 @@ class DB(object):
         q += ' ORDER BY timestamp DESC '
         count = 0
         for (rowid, book_id, fmt, user_type, user, annot_data) in self.execute(q, tuple(data)):
+            if restrict_to_book_ids is not None and book_id not in restrict_to_book_ids:
+                continue
             try:
                 annot = ls(annot_data)
                 atype = annot['type']
@@ -1937,6 +1947,14 @@ class DB(object):
             if changed:
                 self.execute('DELETE FROM annotations_dirtied')
         return changed
+
+    def annotation_count_for_book(self, book_id):
+        for (count,) in self.execute('''
+                 SELECT count(id) FROM annotations
+                 WHERE book=? AND json_extract(annot_data, "$.removed") IS NULL
+                 ''', (book_id,)):
+            return count
+        return 0
 
     def conversion_options(self, book_id, fmt):
         for (data,) in self.conn.get('SELECT data FROM conversion_options WHERE book=? AND format=?', (book_id, fmt.upper())):

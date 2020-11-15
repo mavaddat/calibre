@@ -156,9 +156,10 @@ class SearchBox2(QComboBox):  # {{{
         self.colorize = colorize
         self.clear()
 
-    def clear_search_history(self):
+    def clear_history(self):
         config[self.opt_name] = []
         self.clear()
+    clear_search_history = clear_history
 
     def hide_completer_popup(self):
         try:
@@ -172,9 +173,6 @@ class SearchBox2(QComboBox):  # {{{
 
     def text(self):
         return self.currentText()
-
-    def clear_history(self, *args):
-        QComboBox.clear(self)
 
     def clear(self, emit_search=True):
         self.normalize_state()
@@ -566,7 +564,7 @@ class SavedSearchBoxMixin(object):  # {{{
         self.save_search_button.setToolTip('<p>' +
          _("Save current search under the name shown in the box. "
            "Press and hold for a pop-up options menu.") + '</p>')
-        self.save_search_button.setMenu(QMenu())
+        self.save_search_button.setMenu(QMenu(self.save_search_button))
         self.save_search_button.menu().addAction(
                             QIcon(I('plus.png')),
                             _('Create Saved search'),
@@ -575,7 +573,7 @@ class SavedSearchBoxMixin(object):  # {{{
             QIcon(I('trash.png')), _('Delete Saved search'), self.saved_search.delete_current_search)
         self.save_search_button.menu().addAction(
             QIcon(I('search.png')), _('Manage Saved searches'), partial(self.do_saved_search_edit, None))
-        self.add_saved_search_button.setMenu(QMenu())
+        self.add_saved_search_button.setMenu(QMenu(self.add_saved_search_button))
         self.add_saved_search_button.menu().aboutToShow.connect(self.populate_add_saved_search_menu)
 
     def populate_add_saved_search_menu(self):

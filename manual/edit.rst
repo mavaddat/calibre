@@ -26,7 +26,7 @@ Basic workflow
 ---------------
 
 .. note::
-    A video tour of the calibre editor is available `here
+    A video tour of the calibre E-book editor is available `here
     <https://calibre-ebook.com/demo#tutorials>`_.
 
 When you first open a book with the Edit book tool, you will be presented with
@@ -682,7 +682,7 @@ Spanish languages. You can install your own dictionaries via
 :guilabel:`Preferences->Editor->Manage spelling dictionaries`. The spell
 checker can use dictionaries from the LibreOffice program (in the .oxt
 format). You can download these dictionaries from
-`The LibreOffice Extensions repository <https://extensions.libreoffice.org/extension-center?getCategories=Dictionary&getCompatibility=any&sort_on=positive_ratings>`_.
+`The LibreOffice Extensions repository <https://extensions.libreoffice.org/?Tags%5B%5D=50>`_.
 
 
 Inserting special characters
@@ -851,7 +851,7 @@ find it saves you a lot of time and effort.
 Snippets
 ^^^^^^^^^^^^^^^
 
-The calibre editor supports *snippets*. A snippet is a
+The calibre E-book editor supports *snippets*. A snippet is a
 piece of text that is either re-used often or contains a lot of redundant
 text. The editor allows you to insert a snippet with only a few key strokes.
 The snippets are very powerful, with many features, such as placeholders you

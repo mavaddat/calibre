@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 import subprocess, os, sys, time
 
-from calibre.constants import iswindows, isosx, isfrozen
+from calibre.constants import iswindows, ismacos, isfrozen
 from calibre.utils.config import prefs
 from calibre.ptempfile import PersistentTemporaryFile, base_dir
 from calibre.utils.serialize import msgpack_dumps
@@ -15,7 +15,6 @@ from polyglot.builtins import string_or_bytes, environ_item, native_string_type,
 from polyglot.binary import as_hex_unicode
 
 if iswindows:
-    import win32process
     try:
         windows_null_file = open(os.devnull, 'wb')
     except:
@@ -56,7 +55,7 @@ class Worker(object):
         if iswindows:
             return os.path.join(os.path.dirname(sys.executable),
                    e+'.exe' if isfrozen else 'Scripts\\%s.exe'%e)
-        if isosx:
+        if ismacos:
             return os.path.join(sys.executables_location, e)
 
         if isfrozen:
@@ -70,7 +69,7 @@ class Worker(object):
 
     @property
     def gui_executable(self):
-        if isosx and not hasattr(sys, 'running_from_setup'):
+        if ismacos and not hasattr(sys, 'running_from_setup'):
             if self.job_name == 'ebook-viewer':
                 base = os.path.dirname(sys.executables_location)
                 return os.path.join(base, 'ebook-viewer.app/Contents/MacOS/', self.exe_name)
@@ -160,10 +159,10 @@ class Worker(object):
                 }
         if iswindows:
             priority = {
-                    'high'   : win32process.HIGH_PRIORITY_CLASS,
-                    'normal' : win32process.NORMAL_PRIORITY_CLASS,
-                    'low'    : win32process.IDLE_PRIORITY_CLASS}[priority]
-            args['creationflags'] = win32process.CREATE_NO_WINDOW|priority
+                    'high'   : subprocess.HIGH_PRIORITY_CLASS,
+                    'normal' : subprocess.NORMAL_PRIORITY_CLASS,
+                    'low'    : subprocess.IDLE_PRIORITY_CLASS}[priority]
+            args['creationflags'] = subprocess.CREATE_NO_WINDOW|priority
         else:
             niceness = {
                     'normal' : 0,

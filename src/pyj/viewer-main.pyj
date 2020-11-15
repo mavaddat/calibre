@@ -91,7 +91,7 @@ def show_error(title, msg, details):
     to_python.show_error(title, msg, details)
 
 
-def manifest_received(key, initial_position, pathtoebook, highlights, end_type, xhr, ev):
+def manifest_received(key, initial_position, pathtoebook, highlights, book_url, end_type, xhr, ev):
     nonlocal book
     end_type = workaround_qt_bug(xhr, end_type)
     if end_type is 'load':
@@ -102,6 +102,7 @@ def manifest_received(key, initial_position, pathtoebook, highlights, end_type, 
         book.manifest.pathtoebook = pathtoebook
         book.highlights = highlights
         book.stored_files = {}
+        book.calibre_book_url = book_url
         book.is_complete = True
         v'delete book.manifest["metadata"]'
         v'delete book.manifest["last_read_positions"]'
@@ -210,8 +211,8 @@ def show_home_page():
 
 
 @from_python
-def start_book_load(key, initial_position, pathtoebook, highlights):
-    xhr = ajax('manifest', manifest_received.bind(None, key, initial_position, pathtoebook, highlights), ok_code=0)
+def start_book_load(key, initial_position, pathtoebook, highlights, book_url):
+    xhr = ajax('manifest', manifest_received.bind(None, key, initial_position, pathtoebook, highlights, book_url), ok_code=0)
     xhr.responseType = 'json'
     xhr.send()
 
@@ -330,8 +331,8 @@ if window is window.top:
         to_python.toggle_inspector()
     ui_operations.content_file_changed = def(name):
         to_python.content_file_changed(name)
-    ui_operations.show_search = def(text):
-        to_python.show_search(text)
+    ui_operations.show_search = def(text, trigger):
+        to_python.show_search(text, v'!!trigger')
     ui_operations.find_next = def(previous):
         to_python.find_next(previous)
     ui_operations.reset_interface = def():
@@ -362,8 +363,8 @@ if window is window.top:
         to_python.report_cfi(request_id, data)
     ui_operations.ask_for_open = def(path):
         to_python.ask_for_open(path)
-    ui_operations.copy_selection = def(text):
-        to_python.copy_selection(text or None)
+    ui_operations.copy_selection = def(text, html):
+        to_python.copy_selection(text or None, html or None)
     ui_operations.view_image = def(name):
         to_python.view_image(name)
     ui_operations.copy_image = def(name):

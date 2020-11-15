@@ -22,6 +22,7 @@ from itertools import repeat
 from bypy.constants import (
     OUTPUT_DIR, PREFIX, PYTHON, SRC as CALIBRE_DIR, python_major_minor_version
 )
+from bypy.freeze import extract_extension_modules, freeze_python, path_to_freeze_dir
 from bypy.utils import current_dir, mkdtemp, py_compile, timeit, walk
 
 abspath, join, basename, dirname = os.path.abspath, os.path.join, os.path.basename, os.path.dirname
@@ -43,7 +44,7 @@ APPNAME, VERSION = calibre_constants['appname'], calibre_constants['version']
 basenames, main_modules, main_functions = calibre_constants['basenames'], calibre_constants['modules'], calibre_constants['functions']
 
 
-def compile_launcher_lib(contents_dir, gcc, base, pyver):
+def compile_launcher_lib(contents_dir, gcc, base, pyver, inc_dir):
     print('\tCompiling calibre_launcher.dylib')
     env, env_vals = [], []
     for key, val in ENV.items():
@@ -55,6 +56,7 @@ def compile_launcher_lib(contents_dir, gcc, base, pyver):
     src = join(base, 'util.c')
     cmd = [gcc] + '-Wall -dynamiclib -std=gnu99'.split() + [src] + \
         ['-I' + base] + '-DPY_VERSION_MAJOR={} -DPY_VERSION_MINOR={}'.format(*pyver.split('.')).split() + \
+        [f'-I{path_to_freeze_dir()}', f'-I{inc_dir}'] + \
         [f'-DENV_VARS={env}', f'-DENV_VAR_VALS={env_vals}'] + \
         ['-I%s/python/Python.framework/Versions/Current/Headers' % PREFIX] + \
         '-current_version 1.0 -compatibility_version 1.0'.split() + \
@@ -71,9 +73,9 @@ def compile_launcher_lib(contents_dir, gcc, base, pyver):
 gcc = os.environ.get('CC', 'clang')
 
 
-def compile_launchers(contents_dir, xprograms, pyver):
+def compile_launchers(contents_dir, inc_dir, xprograms, pyver):
     base = dirname(abspath(__file__))
-    lib = compile_launcher_lib(contents_dir, gcc, base, pyver)
+    lib = compile_launcher_lib(contents_dir, gcc, base, pyver, inc_dir)
     src = join(base, 'launcher.c')
     programs = [lib]
     for program, x in xprograms.items():
@@ -146,8 +148,9 @@ class Freeze(object):
 
     FID = '@executable_path/../Frameworks'
 
-    def __init__(self, build_dir, ext_dir, test_runner, test_launchers=False, dont_strip=False, sign_installers=False, notarize=False):
+    def __init__(self, build_dir, ext_dir, inc_dir, test_runner, test_launchers=False, dont_strip=False, sign_installers=False, notarize=False):
         self.build_dir = os.path.realpath(build_dir)
+        self.inc_dir = os.path.realpath(inc_dir)
         self.sign_installers = sign_installers
         self.notarize = notarize
         self.ext_dir = os.path.realpath(ext_dir)
@@ -166,6 +169,7 @@ class Freeze(object):
 
     def run(self, test_launchers):
         ret = 0
+        self.ext_map = {}
         if not test_launchers:
             if os.path.exists(self.build_dir):
                 shutil.rmtree(self.build_dir)
@@ -222,7 +226,7 @@ class Freeze(object):
             progs += list(zip(basenames[x], main_modules[x], main_functions[x], repeat(x)))
         for program, module, func, ptype in progs:
             programs[program] = (module, func, ptype)
-        programs = compile_launchers(self.contents_dir, programs, py_ver)
+        programs = compile_launchers(self.contents_dir, self.inc_dir, programs, py_ver)
         for out in programs:
             self.fix_dependencies_in_lib(out)
 
@@ -383,26 +387,34 @@ class Freeze(object):
     def add_calibre_plugins(self):
         dest = join(self.frameworks_dir, 'plugins')
         os.mkdir(dest)
-        plugins = glob.glob(self.ext_dir + '/*.so')
+        print('Extracting extension modules from:', self.ext_dir, 'to', dest)
+        self.ext_map = extract_extension_modules(self.ext_dir, dest)
+        plugins = glob.glob(dest + '/*.so')
         if not plugins:
             raise SystemExit('No calibre plugins found in: ' + self.ext_dir)
         for f in plugins:
-            shutil.copy2(f, dest)
-            self.fix_dependencies_in_lib(join(dest, basename(f)))
+            self.fix_dependencies_in_lib(f)
             if f.endswith('/podofo.so'):
                 self.change_dep('libpodofo.0.9.6.dylib',
-                    '@executable_path/../Frameworks/libpodofo.0.9.6.dylib', False, join(dest, basename(f)))
+                    '@executable_path/../Frameworks/libpodofo.0.9.6.dylib', False, f)
 
     @flush
     def create_plist(self):
         BOOK_EXTENSIONS = calibre_constants['book_extensions']
         env = dict(**ENV)
         env['CALIBRE_LAUNCHED_FROM_BUNDLE'] = '1'
-        docs = [{'CFBundleTypeName': 'E-book',
-                 'CFBundleTypeExtensions': list(BOOK_EXTENSIONS),
-                 'CFBundleTypeIconFile': 'book.icns',
-                 'CFBundleTypeRole': 'Viewer',
-                 }]
+        docs = [{
+            'CFBundleTypeName': 'E-book',
+            'CFBundleTypeExtensions': list(BOOK_EXTENSIONS),
+            'CFBundleTypeIconFile': 'book.icns',
+            'CFBundleTypeRole': 'Viewer',
+        }]
+        url_handlers = [dict(
+            CFBundleTypeRole='Viewer',
+            CFBundleURLIconFile='calibre',
+            CFBundleURLName='com.calibre-ebook.calibre-url',
+            CFBundleURLSchemes=['calibre']
+        )]
 
         pl = dict(
             CFBundleDevelopmentRegion='English',
@@ -415,6 +427,7 @@ class Freeze(object):
             CFBundleSignature='????',
             CFBundleExecutable='calibre',
             CFBundleDocumentTypes=docs,
+            CFBundleURLTypes=url_handlers,
             LSMinimumSystemVersion='10.14.0',
             LSRequiresNativeExecution=True,
             NSAppleScriptEnabled=False,
@@ -449,7 +462,7 @@ class Freeze(object):
     @flush
     def add_poppler(self):
         print('\nAdding poppler')
-        for x in ('libopenjp2.7.dylib', 'libpoppler.87.dylib',):
+        for x in ('libopenjp2.7.dylib', 'libpoppler.102.dylib',):
             self.install_dylib(join(PREFIX, 'lib', x))
         for x in ('pdftohtml', 'pdftoppm', 'pdfinfo'):
             self.install_dylib(
@@ -538,9 +551,6 @@ class Freeze(object):
             if err.errno != errno.ENOENT:
                 raise
         sp = join(self.resources_dir, 'Python', 'site-packages')
-        for x in os.listdir(join(sp, 'PyQt5')):
-            if x.endswith('.so') and x.rpartition('.')[0] not in PYQT_MODULES and x != 'sip.so':
-                os.remove(join(sp, 'PyQt5', x))
         self.remove_bytecode(sp)
 
     @flush
@@ -630,7 +640,21 @@ class Freeze(object):
     def compile_py_modules(self):
         print('\nCompiling Python modules')
         base = join(self.resources_dir, 'Python')
-        py_compile(base)
+        pydir = join(base, f'lib/python{py_ver}')
+        src = join(pydir, 'lib-dynload')
+        dest = join(self.frameworks_dir, 'plugins')
+        print('Extracting extension modules from:', src, 'to', dest)
+        self.ext_map.update(extract_extension_modules(src, dest))
+        os.rmdir(src)
+        src = join(base, 'site-packages')
+        print('Extracting extension modules from:', src, 'to', dest)
+        self.ext_map.update(extract_extension_modules(src, dest))
+        for x in os.listdir(src):
+            os.rename(join(src, x), join(pydir, x))
+        os.rmdir(src)
+        py_compile(pydir)
+        freeze_python(pydir, dest, self.inc_dir, self.ext_map, develop_mode_env_var='CALIBRE_DEVELOP_FROM')
+        shutil.rmtree(pydir)
 
     def create_app_clone(self, name, specialise_plist, remove_doc_types=False, base_dir=None):
         print('\nCreating ' + name)
@@ -760,9 +784,10 @@ class Freeze(object):
 
 def main(args, ext_dir, test_runner):
     build_dir = abspath(join(mkdtemp('frozen-'), APPNAME + '.app'))
+    inc_dir = abspath(mkdtemp('include'))
     if args.skip_tests:
         test_runner = lambda *a: None
-    Freeze(build_dir, ext_dir, test_runner, dont_strip=args.dont_strip, sign_installers=args.sign_installers, notarize=args.notarize)
+    Freeze(build_dir, ext_dir, inc_dir, test_runner, dont_strip=args.dont_strip, sign_installers=args.sign_installers, notarize=args.notarize)
 
 
 if __name__ == '__main__':

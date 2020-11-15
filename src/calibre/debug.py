@@ -19,8 +19,7 @@ def run_calibre_debug(*args, **kw):
     import subprocess
     creationflags = 0
     if iswindows:
-        import win32process
-        creationflags = win32process.CREATE_NO_WINDOW
+        creationflags = subprocess.CREATE_NO_WINDOW
     cmd = get_debug_executable() + list(args)
     kw['creationflags'] = creationflags
     return subprocess.Popen(cmd, **kw)
@@ -181,26 +180,25 @@ def print_basic_debug_info(out=None):
         out = sys.stdout
     out = functools.partial(prints, file=out)
     import platform
-    from calibre.constants import (__appname__, get_version, isportable, isosx,
+    from contextlib import suppress
+    from calibre.constants import (__appname__, get_version, isportable, ismacos,
                                    isfrozen, is64bit)
     from calibre.utils.localization import set_translators
     out(__appname__, get_version(), 'Portable' if isportable else '',
         'embedded-python:', isfrozen, 'is64bit:', is64bit)
     out(platform.platform(), platform.system(), platform.architecture())
     if iswindows and not is64bit:
-        try:
-            import win32process
-            if win32process.IsWow64Process():
+        from calibre_extensions.winutil import is_wow64_process
+        with suppress(Exception):
+            if is_wow64_process():
                 out('32bit process running on 64bit windows')
-        except:
-            pass
     out(platform.system_alias(platform.system(), platform.release(),
             platform.version()))
     out('Python', platform.python_version())
     try:
         if iswindows:
             out('Windows:', platform.win32_ver())
-        elif isosx:
+        elif ismacos:
             out('OSX:', platform.mac_ver())
         else:
             out('Linux:', platform.linux_distribution())

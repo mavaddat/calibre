@@ -195,10 +195,11 @@ class ScrollResizeBugWatcher:
 
     # In Chrome sometimes after layout the scrollWidth of body increases after a
     # few milliseconds, this can cause scrolling to the end to not work
-    # immediately after layout
+    # immediately after layout. This happens without a resize event, and
+    # without triggering the ResizeObserver and only in paged mode.
 
     def __init__(self):
-        self.max_time = 500
+        self.max_time = 750
         self.last_layout_at = 0
         self.last_command = None
         self.doc_size = 0
@@ -212,7 +213,7 @@ class ScrollResizeBugWatcher:
     def scrolled(self, pos, limit):
         self.cancel_timer()
         now = window.performance.now()
-        if pos >= limit - 2 * col_and_gap and now - self.last_layout_at < self.max_time and self.last_command is not None:
+        if now - self.last_layout_at < self.max_time and self.last_command is not None:
             self.doc_size = scroll_viewport.paged_content_inline_size()
             self.check_for_resize_bug()
 
@@ -240,7 +241,6 @@ class ScrollResizeBugWatcher:
 
 
 scroll_resize_bug_watcher = ScrollResizeBugWatcher()
-
 
 def layout(is_single_page, on_resize):
     nonlocal _in_paged_mode, col_size, col_and_gap, screen_block, gap, screen_inline, is_full_screen_layout, cols_per_screen, number_of_cols
@@ -386,11 +386,11 @@ def scroll_to_pos(pos, notify=False, duration=1000):
     scroll_to_column(column_at(pos), notify=notify, duration=duration)
 
 
-def scroll_to_previous_position():
-    fsd = next_spine_item.forward_scroll_data
+def scroll_to_previous_position(fsd):
+    fsd = fsd or next_spine_item.forward_scroll_data
     next_spine_item.forward_scroll_data = None
     if 0 < fsd.cols_left < cols_per_screen and cols_per_screen < number_of_cols:
-        scroll_resize_bug_watcher.last_command = scroll_to_previous_position
+        scroll_resize_bug_watcher.last_command = scroll_to_previous_position.bind(None, fsd)
         scroll_to_column(fsd.current_col)
         return True
 
@@ -410,13 +410,17 @@ def column_boundaries():
     l = column_at(current_scroll_offset() + 10)
     return l, l + cols_per_screen
 
+
+def column_at_current_scroll_offset():
+    return column_at(current_scroll_offset() + 10)
+
+
 def current_column_location():
     # The location of the starting edge of the first column currently
     # visible in the viewport
     if is_full_screen_layout:
         return 0
-    c = column_at(current_scroll_offset() + 10)
-    return c * col_and_gap
+    return column_at_current_scroll_offset() * col_and_gap
 
 
 def number_of_cols_left():
@@ -467,7 +471,10 @@ def next_col_location():
     limit = scroll_viewport.paged_content_inline_size() - scroll_viewport.inline_size()
     # print(f'cc={cc} col_and_gap={col_and_gap} ans={ans} limit={limit} content_inline_size={scroll_viewport.paged_content_inline_size()} inline={scroll_viewport.inline_size()} current_scroll_offset={current_scroll_offset()}')
     if ans > limit:
-        ans = limit if Math.ceil(current_scroll_offset()) < limit else -1
+        if Math.ceil(current_scroll_offset()) < limit and column_at(limit) > column_at_current_scroll_offset():
+            ans = limit
+        else:
+            ans = -1
     return ans
 
 
@@ -480,7 +487,10 @@ def previous_col_location():
     cc = current_column_location()
     ans = cc - col_and_gap
     if ans < 0:
-        ans = 0 if Math.floor(current_scroll_offset()) > 0 else -1
+        if Math.floor(current_scroll_offset()) > 0 and column_at(0) < column_at_current_scroll_offset():
+            ans = 0
+        else:
+            ans = -1
     return ans
 
 
@@ -606,6 +616,19 @@ def progress_frac(frac):
     if limit <= 0:
         return 0.0
     return Math.max(0, Math.min(scroll_viewport.block_pos() / limit, 1))
+
+
+def page_counts():
+    if in_paged_mode():
+        return {'current': column_at_current_scroll_offset(), 'total': number_of_cols, 'pages_per_screen': cols_per_screen}
+    doc_size = scroll_viewport.document_block_size()
+    screen_size = scroll_viewport.block_size()
+    pos = scroll_viewport.block_pos()
+    return {
+        'current': (pos + 10) // screen_size,
+        'total': doc_size // screen_size,
+        'pages_per_screen': 1
+    }
 
 
 def next_spine_item(backward):

@@ -126,6 +126,7 @@ class FormatterFunction(object):
     category = 'Unknown'
     arg_count = 0
     aliases = []
+    is_python = True
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         raise NotImplementedError()
@@ -1180,6 +1181,26 @@ class BuiltinOndevice(BuiltinFormatterFunction):
         return _('This function can be used only in the GUI')
 
 
+class BuiltinAnnotationCount(BuiltinFormatterFunction):
+    name = 'annotation_count'
+    arg_count = 0
+    category = 'Get values from metadata'
+    __doc__ = doc = _('annotation_count() -- return the total number of annotations '
+                      'of all types attached to the current book. '
+                      'This function works only in the GUI.')
+
+    def evaluate(self, formatter, kwargs, mi, locals):
+        if hasattr(mi, '_proxy_metadata'):
+            try:
+                from calibre.gui2.ui import get_gui
+                c = get_gui().current_db.new_api.annotation_count_for_book(mi.id)
+                return '' if c == 0 else unicode_type(c)
+            except:
+                return _('Failed to fetch annotation count')
+            return ''
+        return _('This function can be used only in the GUI')
+
+
 class BuiltinSeriesSort(BuiltinFormatterFunction):
     name = 'series_sort'
     arg_count = 0
@@ -1668,6 +1689,39 @@ class BuiltinAuthorSorts(BuiltinFormatterFunction):
         return val_sep.join(n for n in names)
 
 
+class BuiltinConnectedDeviceName(BuiltinFormatterFunction):
+    name = 'connected_device_name'
+    arg_count = 1
+    category = 'Get values from metadata'
+    __doc__ = doc = _("connected_device_name(storage_location) -- if a device is "
+                      "connected then return the device name, otherwise return "
+                      "the empty string. Each storage location on a device can "
+                      "have a different name. The location names are 'main', "
+                      "'carda' and 'cardb'. This function works only in the GUI.")
+
+    def evaluate(self, formatter, kwargs, mi, locals, storage_location):
+        if hasattr(mi, '_proxy_metadata'):
+            # Do the import here so that we don't entangle the GUI when using
+            # command line functions
+            from calibre.gui2.ui import get_gui
+            info = get_gui().device_manager.get_current_device_information()
+            if info is None:
+                return ''
+            try:
+                if storage_location not in {'main', 'carda', 'cardb'}:
+                    raise ValueError(
+                         _('connected_device_name: invalid storage location "{0}"'
+                                    .format(storage_location)))
+                info = info['info'][4]
+                if storage_location not in info:
+                    return ''
+                return info[storage_location]['device_name']
+            except:
+                traceback.print_exc()
+                raise
+        return _('This function can be used only in the GUI')
+
+
 class BuiltinCheckYesNo(BuiltinFormatterFunction):
     name = 'check_yes_no'
     arg_count = 4
@@ -1754,7 +1808,7 @@ _formatter_builtins = [
     BuiltinAdd(), BuiltinAnd(), BuiltinApproximateFormats(), BuiltinAssign(),
     BuiltinAuthorLinks(), BuiltinAuthorSorts(), BuiltinBooksize(),
     BuiltinCapitalize(), BuiltinCheckYesNo(), BuiltinCeiling(),
-    BuiltinCmp(), BuiltinContains(),
+    BuiltinCmp(), BuiltinConnectedDeviceName(), BuiltinContains(),
     BuiltinCount(), BuiltinCurrentLibraryName(), BuiltinCurrentLibraryPath(),
     BuiltinDaysBetween(), BuiltinDivide(), BuiltinEval(), BuiltinFirstNonEmpty(),
     BuiltinField(), BuiltinFinishFormatting(), BuiltinFirstMatchingCmp(), BuiltinFloor(),
@@ -1774,23 +1828,45 @@ _formatter_builtins = [
     BuiltinSwapAroundComma(), BuiltinSwitch(),
     BuiltinTemplate(), BuiltinTest(), BuiltinTitlecase(),
     BuiltinToday(), BuiltinTransliterate(), BuiltinUppercase(),
-    BuiltinUserCategories(), BuiltinVirtualLibraries()
+    BuiltinUserCategories(), BuiltinVirtualLibraries(), BuiltinAnnotationCount()
 ]
 
 
 class FormatterUserFunction(FormatterFunction):
 
-    def __init__(self, name, doc, arg_count, program_text):
+    def __init__(self, name, doc, arg_count, program_text, is_python):
+        self.is_python = is_python
         self.name = name
         self.doc = doc
         self.arg_count = arg_count
         self.program_text = program_text
+        self.cached_parse_tree = None
+
+    def to_pref(self):
+        return [self.name, self.doc, self.arg_count, self.program_text]
 
 
 tabs = re.compile(r'^\t*')
 
 
+def function_pref_is_python(pref):
+    if isinstance(pref, list):
+        pref = pref[3]
+    if pref.startswith('def'):
+        return True
+    if pref.startswith('program'):
+        return False
+    raise ValueError('Unknown program type in formatter function pref')
+
+
+def function_pref_name(pref):
+    return pref[0]
+
+
 def compile_user_function(name, doc, arg_count, eval_func):
+    if not function_pref_is_python(eval_func):
+        return FormatterUserFunction(name, doc, arg_count, eval_func, False)
+
     def replace_func(mo):
         return mo.group().replace('\t', '    ')
 
@@ -1805,7 +1881,7 @@ class UserFunction(FormatterUserFunction):
     if DEBUG and tweaks.get('enable_template_debug_printing', False):
         print(prog)
     exec(prog, locals_)
-    cls = locals_['UserFunction'](name, doc, arg_count, eval_func)
+    cls = locals_['UserFunction'](name, doc, arg_count, eval_func, True)
     return cls
 
 
@@ -1822,6 +1898,7 @@ def compile_user_template_functions(funcs):
             # then white space differences don't cause them to compare differently
 
             cls = compile_user_function(*func)
+            cls.is_python = function_pref_is_python(func)
             compiled_funcs[cls.name] = cls
         except Exception:
             try:
@@ -1829,7 +1906,7 @@ def compile_user_template_functions(funcs):
             except Exception:
                 func_name = 'Unknown'
             prints('**** Compilation errors in user template function "%s" ****' % func_name)
-            traceback.print_exc(limit=0)
+            traceback.print_exc(limit=10)
             prints('**** End compilation errors in %s "****"' % func_name)
     return compiled_funcs
 

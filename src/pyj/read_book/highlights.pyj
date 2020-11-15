@@ -3,9 +3,10 @@
 from __python__ import bound_methods, hash_literals
 
 from elementmaker import E
-from gettext import gettext as _
+from gettext import gettext as _, ngettext
 
 from book_list.globals import get_session_data
+from read_book.globals import is_dark_theme
 from book_list.theme import get_color
 from complete import create_search_bar
 from dom import add_extra_css, build_rule, clear, svgicon, unique_id
@@ -15,28 +16,9 @@ from widgets import create_button
 ICON_SIZE_VAL = 3
 ICON_SIZE_UNIT = 'ex'
 ICON_SIZE = f'{ICON_SIZE_VAL}{ICON_SIZE_UNIT}'
-
-builtin_colors_light = {
-    'yellow': '#ffeb6b',
-    'green': '#c0ed72',
-    'blue': '#add8ff',
-    'red': '#ffb0ca',
-    'purple': '#d9b2ff',
-}
-
-builtin_colors_dark = {
-    'yellow': '#c18d18',
-    'green': '#306f50',
-    'blue': '#265589',
-    'red': '#a23e5a',
-    'purple': '#505088',
-}
-
-
-builtin_decorations_light = builtin_decorations_dark = {
-    'wavy': {'text-decoration-style': 'wavy', 'text-decoration-color': 'red', 'text-decoration-line': 'underline'},
-    'strikeout': {'text-decoration-line': 'line-through', 'text-decoration-color': 'red'},
-}
+builtin_colors_light = v'''__BUILTIN_COLORS_LIGHT__'''
+builtin_colors_dark = v'''__BUILTIN_COLORS_DARK__'''
+builtin_decorations_light = builtin_decorations_dark = v'''__BUILTIN_DECORATIONS__'''
 
 
 def builtin_friendly_name(kind, which):
@@ -70,7 +52,7 @@ def all_builtin_styles():
         ans.push({'type': 'builtin', 'kind': 'decoration', 'which': which})
     return ans
 
-all_style_keys = v"'type kind which background-color text-decoration-line text-decoration-color text-decoration-style'.split(' ')"
+all_style_keys = v"'type kind which light dark background-color text-decoration-line text-decoration-color text-decoration-style'.split(' ')"
 
 
 def custom_color_theme(name, lightbg, darkbg):
@@ -298,6 +280,10 @@ class AddStyle:  # {{{
     def focus(self):
         self.get_container().querySelector('input[name=friendly_name]').focus()
 
+    def init(self):
+        self.get_container().querySelector('input[name=friendly_name]').value = ''
+        self.focus()
+
     @property
     def style_type(self):
         return self.get_container().querySelector('input[name=style_type]:checked').value
@@ -411,7 +397,7 @@ class EditNotesAndColors:  # {{{
                 c = self.container
                 c.firstChild.style.display = 'none'
                 c.lastChild.style.display = 'block'
-                self.add_style.focus()
+                self.add_style.init()
         ))
 
         self.set_visibility_of_remove_button()
@@ -426,13 +412,26 @@ class EditNotesAndColors:  # {{{
         self.notes_edit.focus()
 
     def add_new_style(self, new_style):
-        item = self.add_color(HighlightStyle(new_style), True)
-        item.classList.add('custom-style')
-        self.make_swatch_current(item)
-        sd = get_session_data()
-        custom_highlight_styles = sd.get('custom_highlight_styles')
-        custom_highlight_styles.unshift(new_style)
-        sd.set('custom_highlight_styles', custom_highlight_styles)
+        hs = HighlightStyle(new_style)
+        item = self.add_color(hs, True)
+        if not item:
+            # happens if the newly created style is the same as some existing
+            # style
+            for q in self.container.getElementsByClassName('swatch'):
+                if q.dataset.key is hs.key:
+                    item = q
+                    break
+        if item:
+            item.classList.add('custom-style')
+            self.make_swatch_current(item)
+            sd = get_session_data()
+            new_styles = v'[new_style]'
+            seen = {hs.key: True}
+            for style in sd.get('custom_highlight_styles'):
+                hso = HighlightStyle(style)
+                if not seen[hso.key]:
+                    new_styles.push(style)
+            sd.set('custom_highlight_styles', new_styles)
 
     def set_visibility_of_remove_button(self):
         c = self.container
@@ -450,11 +449,13 @@ class EditNotesAndColors:  # {{{
         sqbg = get_color('window-background2') if is_current else 'unset'
         item = E.div(
             ic, style=f'padding: 4px; background-color: {sqbg}; margin: 4px; border-radius: {ICON_SIZE_VAL/4}{ICON_SIZE_UNIT}',
-            onclick=self.change_color
+            onclick=self.change_color, title=hs.friendly_name
         )
         if is_current:
             item.classList.add('current-swatch')
+        item.classList.add('swatch')
         item.dataset.style = hs.serialized()
+        item.dataset.key = hs.key
         parent = self.container.getElementsByClassName('color-block')[0]
         if at_start:
             parent.insertBefore(item, parent.firstChild)
@@ -562,12 +563,17 @@ def find_next():
 
 
 add_extra_css(def():
-    sel = '#' + get_container_id()
+    sel = '#' + get_container_id() + ' .toc-group'
     ans = ''
+    ans += build_rule(sel + ' h3', display='flex', align_items='center', cursor='pointer', margin_top='1ex')
+    ans += build_rule(sel + '.expanded .caret-right', display='none')
+    ans += build_rule(sel + '.collapsed .caret-down', display='none')
+    ans += build_rule(sel + '.collapsed > div', display='none')
     qsel = sel + ' .highlight'
     ans += build_rule(qsel, margin_top='1ex', border_top='solid 1px', padding_top='1ex', cursor='pointer')
     ans += build_rule(qsel + ' .notes', display='none', margin_top='1ex', max_height='20ex', overflow='auto')
     ans += build_rule(qsel + ' .actions', display='none', margin_top='1ex', justify_content='space-between')
+    ans += build_rule(qsel + ' .title', display='flex', align_items='center')
     current = qsel + '.current'
     ans += build_rule(current + ' .title', font_weight='bold', font_size='larger')
     ans += build_rule(current + ' .notes', display='block')
@@ -643,13 +649,16 @@ def highlight_entry(h, onclick, view):
     def button(text, func):
         return E.a(text, class_='blue-link', onclick=func)
 
+    hs = HighlightStyle(h.style)
+    swatch = E.div()
+    hs.make_swatch(swatch, is_dark_theme())
     ans = E.div(
         class_='highlight',
         onclick=highlight_entry_clicked,
-        E.div(class_='title', h.highlighted_text),
+        E.div(class_='title', swatch, E.div('\xa0', h.highlighted_text)),
         E.div(
             class_='actions',
-            button(_('Show in text'), action.bind(None, show_in_text.bind(None, h.uuid))),
+            button(_('Show in book'), action.bind(None, show_in_text.bind(None, h.uuid))),
             E.span('\xa0'),
             button(_('Edit notes'), edit_notes.bind(None, h.uuid, h.notes, view)),
             E.span('\xa0'),
@@ -679,7 +688,48 @@ def create_highlights_panel(annotations_manager, book, container, onclick):
         ),
     )
     container.appendChild(c)
-    c.appendChild(E.div())
+    toc_groups = {}
+    toc_tt = {}
     for h in annotations_manager.all_highlights():
-        c.lastChild.appendChild(highlight_entry(h, onclick, annotations_manager.view))
+        toc = _('Unknown')
+        if h.toc_family_titles?.length:
+            toc = h.toc_family_titles[-1]
+        if not toc_groups[toc]:
+            toc_groups[toc] = v'[]'
+            if h.toc_family_titles?.length:
+                lines = v'[]'
+                for i, node in enumerate(h.toc_family_titles):
+                    lines.push('\xa0\xa0' * i + '➤ ' + node)
+                tt = ngettext('Table of Contents section:', 'Table of Contents sections:', lines.length)
+                tt += '\n' + '\n'.join(lines)
+                toc_tt[toc] = tt
+        toc_groups[toc].push(h)
+
+    def tree_icon(which):
+        ans = svgicon(which)
+        ans.classList.add(which)
+        return ans
+
+    for group in Object.keys(toc_groups):
+        highlights = toc_groups[group]
+        g = E.div(
+            class_='toc-group expanded',
+            E.h3(
+                title=toc_tt[group] or '',
+                tree_icon('caret-right'), tree_icon('caret-down'), E.div('\xa0' + group),
+                onclick=def (ev):
+                    tg = ev.currentTarget.closest('.toc-group')
+                    if tg.classList.contains('expanded'):
+                        tg.classList.remove('expanded')
+                        tg.classList.add('collapsed')
+                    else:
+                        tg.classList.remove('collapsed')
+                        tg.classList.add('expanded')
+            ),
+            E.div(style='margin-left: 1rem')
+        )
+        c.appendChild(g)
+        ic = g.lastChild
+        for h in highlights:
+            ic.appendChild(highlight_entry(h, onclick, annotations_manager.view))
 # }}}

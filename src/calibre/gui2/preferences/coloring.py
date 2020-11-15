@@ -211,7 +211,7 @@ class ConditionEditor(QWidget):  # {{{
             dt = m['datatype']
             if dt == 'bool':
                 from calibre.gui2.ui import get_gui
-                if not get_gui().current_db.prefs.get('bools_are_tristate'):
+                if not get_gui().current_db.new_api.pref('bools_are_tristate'):
                     dt = 'bool2'
             if dt in self.action_map:
                 actions = self.action_map[dt]
@@ -421,7 +421,7 @@ class RuleEditor(QDialog):  # {{{
         if self.rule_kind != 'color':
             self.remove_button = b = bb.addButton(_('&Remove icon'), bb.ActionRole)
             b.setIcon(QIcon(I('minus.png')))
-            b.setMenu(QMenu())
+            b.setMenu(QMenu(b))
             b.setToolTip('<p>' + _('Remove a previously added icon. Note that doing so will cause rules that use it to stop working.'))
             self.update_remove_button()
 
@@ -517,7 +517,7 @@ class RuleEditor(QDialog):  # {{{
     def filename_button_clicked(self):
         try:
             path = choose_files(self, 'choose_category_icon',
-                        _('Select Icon'), filters=[
+                        _('Select icon'), filters=[
                         (_('Images'), ['png', 'gif', 'jpg', 'jpeg'])],
                     all_files=False, select_only_single_file=True)
             if path:
@@ -873,8 +873,9 @@ class RulesModel(QAbstractListModel):  # {{{
                 _('<li>The condition using column <b>%(col)s</b> is <b>invalid</b>')
                 % dict(col=c))
         return (
-            _('<li>If the <b>%(col)s</b> column <b>%(action)s</b> value: <b>%(val)s</b>') % dict(
-                col=c, action=action_name, val=prepare_string_for_xml(v)))
+            _('<li>If the <b>%(col)s</b> column <b>%(action)s</b> %(val_label)s<b>%(val)s</b>') % dict(
+                col=c, action=action_name, val=prepare_string_for_xml(v),
+                val_label=_('value: ') if v else ''))
 
 # }}}
 

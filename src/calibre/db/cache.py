@@ -6,36 +6,45 @@ __license__   = 'GPL v3'
 __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import os, traceback, random, shutil, operator
+import operator
+import os
+import random
+import shutil
+import sys
+import traceback
+from collections import MutableSet, Set, defaultdict
+from functools import partial, wraps
 from io import BytesIO
-from collections import defaultdict, Set, MutableSet
-from functools import wraps, partial
-from polyglot.builtins import iteritems, itervalues, unicode_type, zip, string_or_bytes, cmp
 from time import time
 
-from calibre import isbytestring, as_unicode
+from calibre import as_unicode, isbytestring
 from calibre.constants import iswindows, preferred_encoding
-from calibre.customize.ui import run_plugins_on_import, run_plugins_on_postimport, run_plugins_on_postadd
+from calibre.customize.ui import (
+    run_plugins_on_import, run_plugins_on_postadd, run_plugins_on_postimport
+)
 from calibre.db import SPOOL_SIZE, _get_next_series_num_for_list
 from calibre.db.annotations import merge_annotations
 from calibre.db.categories import get_categories
-from calibre.db.locking import create_locks, DowngradeLockError, SafeReadLock
-from calibre.db.errors import NoSuchFormat, NoSuchBook
-from calibre.db.fields import create_field, IDENTITY, InvalidLinkTable
+from calibre.db.errors import NoSuchBook, NoSuchFormat
+from calibre.db.fields import IDENTITY, InvalidLinkTable, create_field
+from calibre.db.lazy import FormatMetadata, FormatsList, ProxyMetadata
+from calibre.db.locking import DowngradeLockError, SafeReadLock, create_locks
 from calibre.db.search import Search
 from calibre.db.tables import VirtualTable
+from calibre.db.utils import type_safe_sort_key_function
 from calibre.db.write import get_series_values, uniq
-from calibre.db.lazy import FormatMetadata, FormatsList, ProxyMetadata
 from calibre.ebooks import check_ebook_format
-from calibre.ebooks.metadata import string_to_authors, author_to_author_sort
+from calibre.ebooks.metadata import author_to_author_sort, string_to_authors
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.ebooks.metadata.opf2 import metadata_to_opf
-from calibre.ptempfile import (base_dir, PersistentTemporaryFile,
-                               SpooledTemporaryFile)
+from calibre.ptempfile import PersistentTemporaryFile, SpooledTemporaryFile, base_dir
 from calibre.utils.config import prefs, tweaks
-from calibre.utils.date import now as nowf, utcnow, UNDEFINED_DATE
+from calibre.utils.date import UNDEFINED_DATE, now as nowf, utcnow
 from calibre.utils.icu import sort_key
 from calibre.utils.localization import canonicalize_lang
+from polyglot.builtins import (
+    cmp, iteritems, itervalues, string_or_bytes, unicode_type, zip
+)
 
 
 def api(f):
@@ -510,7 +519,7 @@ class Cache(object):
             return frozenset(self.fields[field].table.col_book_map)
 
         try:
-            return frozenset(itervalues(self.fields[field].table.id_map))
+            return frozenset(self.fields[field].table.id_map.values())
         except AttributeError:
             raise ValueError('%s is not a many-one or many-many field' % field)
 
@@ -623,13 +632,18 @@ class Cache(object):
         return {fmt:field.format_fname(book_id, fmt) for fmt in fmts}
 
     @read_api
-    def pref(self, name, default=None):
+    def pref(self, name, default=None, namespace=None):
         ' Return the value for the specified preference or the value specified as ``default`` if the preference is not set. '
+        if namespace is not None:
+            return self.backend.prefs.get_namespaced(namespace, name, default)
         return self.backend.prefs.get(name, default)
 
     @write_api
-    def set_pref(self, name, val):
+    def set_pref(self, name, val, namespace=None):
         ' Set the specified preference to the specified value. See also :meth:`pref`. '
+        if namespace is not None:
+            self.backend.prefs.set_namespaced(namespace, name, val)
+            return
         self.backend.prefs.set(name, val)
         if name == 'grouped_search_terms':
             self._clear_search_caches()
@@ -970,8 +984,17 @@ class Cache(object):
         fields = uniq(fields, operator.itemgetter(0))
 
         if len(fields) == 1:
-            return sorted(ids_to_sort, key=sort_key_func(fields[0][0]),
-                          reverse=not fields[0][1])
+            keyfunc = sort_key_func(fields[0][0])
+            reverse = not fields[0][1]
+            try:
+                return sorted(ids_to_sort, key=keyfunc, reverse=reverse)
+            except Exception as err:
+                print('Failed to sort database on field:', fields[0][0], 'with error:', err, file=sys.stderr)
+                try:
+                    return sorted(ids_to_sort, key=type_safe_sort_key_function(keyfunc), reverse=reverse)
+                except Exception as err:
+                    print('Failed to type-safe sort database on field:', fields[0][0], 'with error:', err, file=sys.stderr)
+                    return sorted(ids_to_sort, reverse=reverse)
         sort_key_funcs = tuple(sort_key_func(field) for field, order in fields)
         orders = tuple(1 if order else -1 for _, order in fields)
         Lazy = object()  # Lazy load the sort keys for sub-sort fields
@@ -2127,6 +2150,10 @@ class Cache(object):
                 traceback.print_exc()
         self.backend.close()
 
+    @property
+    def is_closed(self):
+        return self.backend.is_closed
+
     @write_api
     def restore_book(self, book_id, mi, last_modified, path, formats, annotations=()):
         ''' Restore the book entry in the database for a book that already exists on the filesystem '''
@@ -2191,9 +2218,9 @@ class Cache(object):
     def embed_metadata(self, book_ids, only_fmts=None, report_error=None, report_progress=None):
         ''' Update metadata in all formats of the specified book_ids to current metadata in the database. '''
         field = self.fields['formats']
-        from calibre.ebooks.metadata.opf2 import pretty_print
         from calibre.customize.ui import apply_null_metadata
         from calibre.ebooks.metadata.meta import set_metadata
+        from calibre.ebooks.metadata.opf2 import pretty_print
         if only_fmts:
             only_fmts = {f.lower() for f in only_fmts}
 
@@ -2303,6 +2330,10 @@ class Cache(object):
         return tuple(self.backend.all_annotations_for_book(book_id))
 
     @read_api
+    def annotation_count_for_book(self, book_id):
+        return self.backend.annotation_count_for_book(book_id)
+
+    @read_api
     def all_annotation_users(self):
         return tuple(self.backend.all_annotation_users())
 
@@ -2311,8 +2342,8 @@ class Cache(object):
         return tuple(self.backend.all_annotation_types())
 
     @read_api
-    def all_annotations(self, restrict_to_user=None, limit=None, annotation_type=None, ignore_removed=False):
-        return tuple(self.backend.all_annotations(restrict_to_user, limit, annotation_type, ignore_removed))
+    def all_annotations(self, restrict_to_user=None, limit=None, annotation_type=None, ignore_removed=False, restrict_to_book_ids=None):
+        return tuple(self.backend.all_annotations(restrict_to_user, limit, annotation_type, ignore_removed, restrict_to_book_ids))
 
     @read_api
     def search_annotations(
@@ -2343,8 +2374,8 @@ class Cache(object):
 
     @write_api
     def restore_annotations(self, book_id, annotations):
-        from calibre.utils.iso8601 import parse_iso8601
         from calibre.utils.date import EPOCH
+        from calibre.utils.iso8601 import parse_iso8601
         umap = defaultdict(list)
         for adata in annotations:
             key = adata['user_type'], adata['user'], adata['format']
@@ -2360,8 +2391,8 @@ class Cache(object):
 
     @write_api
     def merge_annotations_for_book(self, book_id, fmt, annots_list, user_type='local', user='viewer'):
-        from calibre.utils.iso8601 import parse_iso8601
         from calibre.utils.date import EPOCH
+        from calibre.utils.iso8601 import parse_iso8601
         amap = self._annotations_map_for_book(book_id, fmt, user_type=user_type, user=user)
         merge_annotations(annots_list, amap)
         alist = []

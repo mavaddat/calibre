@@ -7,16 +7,17 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 import functools
-
 from PyQt5.Qt import (
-    QAction, QApplication, QIcon, QLabel, QMenu, QPainter, QSizePolicy,
-    QSplitter, QStackedWidget, QStatusBar, QStyle, QStyleOption, Qt, QTabBar, QTimer,
+    QAction, QApplication, QIcon, QLabel, QMenu, QPainter, QSizePolicy, QSplitter,
+    QStackedWidget, QStatusBar, QStyle, QStyleOption, Qt, QTabBar, QTimer,
     QToolButton, QVBoxLayout, QWidget
 )
 
-from calibre.constants import __appname__, get_version, isosx
+from calibre.constants import __appname__, get_version, ismacos
 from calibre.customize.ui import find_plugin
-from calibre.gui2 import config, error_dialog, gprefs, is_widescreen, open_url
+from calibre.gui2 import (
+    config, error_dialog, gprefs, is_widescreen, open_local_file, open_url
+)
 from calibre.gui2.book_details import BookDetails
 from calibre.gui2.layout_menu import LayoutMenu
 from calibre.gui2.library.alternate_views import GridView
@@ -425,10 +426,12 @@ class VLTabs(QTabBar):  # {{{
     def enable_bar(self):
         gprefs['show_vl_tabs'] = True
         self.setVisible(True)
+        self.gui.set_number_of_books_shown()
 
     def disable_bar(self):
         gprefs['show_vl_tabs'] = False
         self.setVisible(False)
+        self.gui.set_number_of_books_shown()
 
     def lock_tab(self):
         gprefs['vl_tabs_closable'] = False
@@ -460,7 +463,7 @@ class VLTabs(QTabBar):  # {{{
         vl = unicode_type(self.tabData(index) or '')
         if vl:  # Dont allow closing the All Books tab
             self.current_db.new_api.set_pref('virt_libs_hidden', list(
-                self.current_db.prefs['virt_libs_hidden']) + [vl])
+                self.current_db.new_api.pref('virt_libs_hidden', ())) + [vl])
             self.removeTab(index)
 
     @property
@@ -476,13 +479,13 @@ class VLTabs(QTabBar):  # {{{
 
     def _rebuild(self):
         db = self.current_db
-        vl_map = db.prefs.get('virtual_libraries', {})
+        vl_map = db.new_api.pref('virtual_libraries', {})
         virt_libs = frozenset(vl_map)
-        hidden = set(db.prefs['virt_libs_hidden'])
+        hidden = set(db.new_api.pref('virt_libs_hidden', ()))
         if hidden - virt_libs:
             hidden = hidden.intersection(virt_libs)
             db.new_api.set_pref('virt_libs_hidden', list(hidden))
-        order = db.prefs['virt_libs_order']
+        order = db.new_api.pref('virt_libs_order', ())
         while self.count():
             self.removeTab(0)
         current_lib = db.data.get_base_restriction_name()
@@ -521,7 +524,7 @@ class VLTabs(QTabBar):  # {{{
     def contextMenuEvent(self, ev):
         m = QMenu(self)
         m.addAction(_('Sort tabs alphabetically'), self.sort_alphabetically)
-        hidden = self.current_db.prefs['virt_libs_hidden']
+        hidden = self.current_db.new_api.pref('virt_libs_hidden')
         if hidden:
             s = m._s = m.addMenu(_('Restore hidden tabs'))
             for x in hidden:
@@ -545,7 +548,7 @@ class VLTabs(QTabBar):  # {{{
         self.rebuild()
 
     def restore(self, x):
-        h = self.current_db.prefs['virt_libs_hidden']
+        h = self.current_db.new_api.pref('virt_libs_hidden', ())
         self.current_db.new_api.set_pref('virt_libs_hidden', list(set(h) - {x}))
         self.rebuild()
 
@@ -618,7 +621,7 @@ class LayoutMixin(object):  # {{{
                     button = self.search_bar_button
             self.layout_buttons.append(button)
             button.setVisible(False)
-            if isosx and stylename != 'Calibre':
+            if ismacos and stylename != 'Calibre':
                 button.setStyleSheet('''
                         QToolButton { background: none; border:none; padding: 0px; }
                         QToolButton:checked { background: rgba(0, 0, 0, 25%); }
@@ -731,6 +734,9 @@ class LayoutMixin(object):  # {{{
     def bd_open_cover_with(self, book_id, entry):
         cpath = self.current_db.new_api.format_abspath(book_id, '__COVER_INTERNAL__')
         if cpath:
+            if entry is None:
+                open_local_file(cpath)
+                return
             from calibre.gui2.open_with import run_program
             run_program(entry, cpath, self)
 

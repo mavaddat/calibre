@@ -817,7 +817,7 @@ class SMART_DEVICE_APP(DeviceConfig, DevicePlugin):
                             break
                         raw = fd.read(int(rec_len))
                         book = json.loads(raw.decode('utf-8'), object_hook=from_json)
-                        key = book.keys()[0]
+                        key = list(book.keys())[0]
                         metadata = self.json_codec.raw_to_book(book[key]['book'],
                                                             SDBook, self.PREFIX)
                         book[key]['book'] = metadata
@@ -2040,10 +2040,12 @@ class SMART_DEVICE_APP(DeviceConfig, DevicePlugin):
 # Function to monkeypatch zeroconf to remove the 15 character name length restriction.
 # Copied from https://github.com/jstasiak/python-zeroconf version 0.28.1
 
+
 from zeroconf import (BadTypeInNameException, _HAS_A_TO_Z,
                       _HAS_ONLY_A_TO_Z_NUM_HYPHEN_UNDERSCORE,
                       _HAS_ASCII_CONTROL_CHARS,
                       _HAS_ONLY_A_TO_Z_NUM_HYPHEN)
+
 
 def service_type_name(type_: str, *, allow_underscores: bool = False) -> str:
     """
@@ -2143,4 +2145,3 @@ def service_type_name(type_: str, *, allow_underscores: bool = False) -> str:
             )
 
     return '_' + name + type_[-len('._tcp.local.') :]
-

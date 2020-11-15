@@ -259,7 +259,7 @@ class Quickview(QDialog, Ui_Quickview):
 
         self.books_table.horizontalHeader().sectionResized.connect(self.section_resized)
         self.dock_button.clicked.connect(self.show_as_pane_changed)
-        self.gui.search.cleared.connect(self.indicate_no_items)
+        self.view.model().search_done.connect(self.check_for_no_items)
 
         # Enable the refresh button only when QV is locked
         self.refresh_button.setEnabled(False)
@@ -311,7 +311,7 @@ class Quickview(QDialog, Ui_Quickview):
         book_id = int(item.data(Qt.UserRole))
         book_displayed = self.book_displayed_in_library_view(book_id)
         m = self.context_menu = QMenu(self)
-        a = m.addAction(self.select_book_icon, _('Select book in the library'),
+        a = m.addAction(self.select_book_icon, _('Select this book in the library'),
                                 partial(self.select_book, book_id))
         a.setEnabled(book_displayed)
         m.addAction(self.search_icon, _('Search for item in the library'),
@@ -350,7 +350,7 @@ class Quickview(QDialog, Ui_Quickview):
             Refill the table in case the columns displayed changes
         '''
         self.add_columns_to_widget()
-        self._refresh(self.current_book_id, self.current_key)
+        self.refresh(self.view.currentIndex(), ignore_lock=True)
 
     def set_search_text(self, txt):
         self.last_search = txt
@@ -461,20 +461,25 @@ class Quickview(QDialog, Ui_Quickview):
         gprefs['qv_respects_vls'] = self.apply_vls.isChecked()
         self._refresh(self.current_book_id, self.current_key)
 
-    def refresh(self, idx):
+    def refresh(self, idx, ignore_lock=False):
         '''
         Given a cell in the library view, display the information. This method
         converts the index into the lookup key
         '''
-        if self.lock_qv.isChecked() or not idx.isValid():
+        if (not ignore_lock and self.lock_qv.isChecked()):
+            return
+        if not idx.isValid():
+            from calibre.constants import DEBUG
+            if DEBUG:
+                from calibre import prints
+                prints('QuickView: current index is not valid')
             return
 
         try:
             self.current_column = (
-                self.view.column_map.index('authors')
-                    if self.current_column is None
-                       and self.view.column_map[idx.column()] == 'title'
-                    else idx.column())
+                self.view.column_map.index('authors') if (
+                    self.current_column is None and self.view.column_map[idx.column()] == 'title'
+                ) else idx.column())
             key = self.view.column_map[self.current_column]
             book_id = self.view.model().id(idx.row())
             if self.current_book_id == book_id and self.current_key == key:
@@ -550,8 +555,11 @@ class Quickview(QDialog, Ui_Quickview):
             self.fill_in_books_box(vals[0])
         else:
             self.indicate_no_items()
-
         self.items.blockSignals(False)
+
+    def check_for_no_items(self):
+        if not self.is_closed and self.view.model().count() == 0:
+            self.indicate_no_items()
 
     def indicate_no_items(self):
         self.no_valid_items = True
@@ -589,7 +597,7 @@ class Quickview(QDialog, Ui_Quickview):
         tt = ('<p>' + _(
               'Double click on a book to change the selection in the library view or '
               'change the column shown in the left-hand panel. '
-              'Shift- or Control- double click to edit the metadata of a book, '
+              'Shift- or Ctrl- double click to edit the metadata of a book, '
               'which also changes the selected book.'
               ) + '</p>')
         for row, b in enumerate(books):

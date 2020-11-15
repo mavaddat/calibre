@@ -48,8 +48,8 @@ def find_tests():
                 tf.write(b'external')
                 self.temp_file = os.path.abspath(tf.name)
             if iswindows:
-                import win32api
-                self.temp_file = win32api.GetLongPathNameW(self.temp_file)
+                from calibre_extensions.winutil import get_long_path_name
+                self.temp_file = get_long_path_name(self.temp_file)
 
         def tearDown(self):
             os.remove(self.temp_file)

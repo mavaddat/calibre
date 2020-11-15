@@ -48,10 +48,10 @@ using the viewer Preferences under :guilabel:`Page layout` or by pressing the
 Bookmarks
 ^^^^^^^^^^^^
 
-When you are in the middle of a book and close the viewer, it will remember
+When you are in the middle of a book and close the E-book viewer, it will remember
 where you stopped reading and return there the next time you open the book. You
 can also set bookmarks in the book by using the :guilabel:`Bookmarks` button in
-the viewer controls or pressing :kbd:`ctrl+b`.  When viewing EPUB format books,
+the E-book viewer controls or pressing :kbd:`ctrl+b`.  When viewing EPUB format books,
 these bookmarks are actually saved in the EPUB file itself. You can add
 bookmarks, then send the file to a friend.  When they open the file, they will
 be able to see your bookmarks. You can turn off this behavior in the
@@ -78,6 +78,10 @@ You can use this location information to unambiguously refer to parts of the
 books when discussing it with friends or referring to it in other works. You
 can enter these locations under :guilabel:`Go to->Location` in the viewer
 controls.
+
+There is a URL you can copy to the clipboard and paste into other programs
+or documents. Clicking on this URL will open the book in the calibre E-book viewer at
+the current location.
 
 If you click on links inside the e-book to take you to different parts of the
 book, such as an endnote, you can use the :guilabel:`Back` and
@@ -106,15 +110,16 @@ selection. You can click the highlight button in that bar to create a
 highlight. You can add notes and change the color of the highlight. On a touch
 screen, long tap a word to select it and show the popup bar. Once in highlight
 mode you can tap the :guilabel:`Adjust selection` button to change what text is
-selected using touch screen friendly selection handles.  Drag
+selected, using touch screen friendly selection handles.  Drag
 the handles to the top or bottom margins to scroll while selecting.
 
-You can use the :guilabel:`Browse highlights` button in the viewer
-controls to show a separate panel with a list of all highlights in the book.
+You can use the :guilabel:`Highlights` button in the viewer
+controls to show a separate panel with a list of all highlights in the book,
+sorted by chapter.
 
-You can browse *all highlights* in your entire calibre library by going to
-:guilabel:`Preferences->Toolbars` in calibre and adding the :guilabel:`Browse
-annotations` tool to the toolbar.
+You can browse *all highlights* in your entire calibre library by right
+clicking the :guilabel:`View` button and choosing :guilabel:`Browse
+annotations`.
 
 Finally, if you use the calibre Content server's in browser viewer, you can
 have the viewer sync its annotations with the browser viewer by going to

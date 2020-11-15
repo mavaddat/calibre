@@ -16,7 +16,7 @@ from PyQt5.Qt import (
     QMenu, QHBoxLayout, QTimer, QUrl, QSize)
 
 from calibre import prints
-from calibre.constants import __appname__, get_version, isosx, DEBUG
+from calibre.constants import __appname__, get_version, ismacos, DEBUG
 from calibre.customize.ui import find_plugin
 from calibre.gui2 import elided_text, open_url
 from calibre.gui2.dbus_export.widgets import factory
@@ -149,6 +149,9 @@ class Central(QStackedWidget):  # {{{
     def close_all_but_current_editor(self):
         self.close_all_but(self.current_editor)
 
+    def close_to_right_of_current_editor(self):
+        self.close_to_right(self.current_editor)
+
     def close_all_but(self, ed):
         close = []
         if ed is not None:
@@ -156,6 +159,19 @@ class Central(QStackedWidget):  # {{{
                 q = self.editor_tabs.widget(i)
                 if q is not None and q is not ed:
                     close.append(q)
+        for q in close:
+            self.close_requested.emit(q)
+
+    def close_to_right(self, ed):
+        close = []
+        if ed is not None:
+            found = False
+            for i in range(self.editor_tabs.count()):
+                q = self.editor_tabs.widget(i)
+                if found:
+                    close.append(q)
+                elif q is ed:
+                    found = True
         for q in close:
             self.close_requested.emit(q)
 
@@ -196,6 +212,7 @@ class Central(QStackedWidget):  # {{{
             menu.addAction(actions['close-current-tab'].icon(), _('Close tab'), partial(self.close_requested.emit, ed))
             menu.addSeparator()
             menu.addAction(actions['close-all-but-current-tab'].icon(), _('Close other tabs'), partial(self.close_all_but, ed))
+            menu.addAction(actions['close-tabs-to-right-of'].icon(), _('Close tabs to the right of this tab'), partial(self.close_to_right, ed))
             menu.exec_(self.editor_tabs.tabBar().mapToGlobal(event.pos()))
 
         return True
@@ -357,9 +374,9 @@ class Main(MainWindow):
                 'edit-previous-file', 'Ctrl+Alt+Up', _('Edit the previous file in the spine'))
         # Qt does not generate shortcut overrides for cmd+arrow on os x which
         # means these shortcuts interfere with editing
-        self.action_global_undo = treg('back.png', _('&Revert to before'), self.boss.do_global_undo, 'global-undo', () if isosx else 'Ctrl+Left',
+        self.action_global_undo = treg('back.png', _('&Revert to before'), self.boss.do_global_undo, 'global-undo', () if ismacos else 'Ctrl+Left',
                                       _('Revert book to before the last action (Undo)'))
-        self.action_global_redo = treg('forward.png', _('&Revert to after'), self.boss.do_global_redo, 'global-redo', () if isosx else 'Ctrl+Right',
+        self.action_global_redo = treg('forward.png', _('&Revert to after'), self.boss.do_global_redo, 'global-redo', () if ismacos else 'Ctrl+Right',
                                       _('Revert book state to after the next action (Redo)'))
         self.action_save = treg('save.png', _('&Save'), self.boss.save_book, 'save-book', 'Ctrl+S', _('Save book'))
         self.action_save.setEnabled(False)
@@ -510,6 +527,9 @@ class Main(MainWindow):
         self.action_close_all_but_current_tab = reg(
             'edit-clear.png', _('C&lose other tabs'), self.central.close_all_but_current_editor, 'close-all-but-current-tab', 'Ctrl+Alt+W', _(
                 'Close all tabs except the current tab'))
+        self.action_close_to_right = reg(
+            'edit-clear.png', _('Close tabs to the &right'), self.central.close_to_right_of_current_editor, 'close-tabs-to-right-of', 'Ctrl+Shift+W', _(
+                'Close tabs to the right of the current tab'))
         self.action_help = treg(
             'help.png', _('User &Manual'), lambda : open_url(QUrl(localize_user_manual_link(
                 'https://manual.calibre-ebook.com/edit.html'))), 'user-manual', 'F1', _(
@@ -524,14 +544,14 @@ class Main(MainWindow):
             'Compare to another book'))
         self.action_manage_snippets = treg(
             'snippets.png', _('Manage &Snippets'), self.boss.manage_snippets, 'manage-snippets', (), _(
-                'Manage user created snippets'))
+                'Manage user created Snippets'))
 
         self.plugin_menu_actions = []
 
         create_plugin_actions(actions, toolbar_actions, self.plugin_menu_actions)
 
     def create_menubar(self):
-        if isosx:
+        if ismacos:
             p, q = self.create_application_menubar()
             q.triggered.connect(self.action_quit.trigger)
             p.triggered.connect(self.action_preferences.trigger)

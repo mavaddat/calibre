@@ -16,7 +16,7 @@ from calibre.srv.errors import HTTPNotFound
 from calibre.utils.localization import get_translator
 from calibre.utils.socket_inheritance import set_socket_inherit
 from calibre.utils.logging import ThreadSafeLog
-from calibre.utils.shared_file import share_open, raise_winerror
+from calibre.utils.shared_file import share_open
 from polyglot.builtins import iteritems, map, range
 from polyglot import reprlib
 from polyglot.http_cookie import SimpleCookie
@@ -334,11 +334,8 @@ class RotatingStream(object):
     def rename(self, src, dest):
         try:
             if iswindows:
-                import win32file, pywintypes
-                try:
-                    win32file.MoveFileEx(src, dest, win32file.MOVEFILE_REPLACE_EXISTING|win32file.MOVEFILE_WRITE_THROUGH)
-                except pywintypes.error as e:
-                    raise_winerror(e)
+                from calibre_extensions import winutil
+                winutil.move_file(src, dest)
             else:
                 os.rename(src, dest)
         except EnvironmentError as e:
@@ -391,7 +388,7 @@ class HandleInterrupt(object):  # {{{
     # On windows socket functions like accept(), recv(), send() are not
     # interrupted by a Ctrl-C in the console. So to make Ctrl-C work we have to
     # use this special context manager. See the echo server example at the
-    # bottom of this file for how to use it.
+    # bottom of srv/loop.py for how to use it.
 
     def __init__(self, action):
         if not iswindows:
@@ -414,12 +411,7 @@ class HandleInterrupt(object):  # {{{
                 if self.action is not None:
                     self.action()
                     self.action = None
-                # Typical C implementations would return 1 to indicate that
-                # the event was processed and other control handlers in the
-                # stack should not be executed.  However, that would
-                # prevent the Python interpreter's handler from translating
-                # CTRL-C to a `KeyboardInterrupt` exception, so we pretend
-                # that we didn't handle it.
+                    return 1
             return 0
         self.handle = handle
 

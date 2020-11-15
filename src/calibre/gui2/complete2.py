@@ -6,18 +6,16 @@ __license__   = 'GPL v3'
 __copyright__ = '2012, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import weakref
-
 from PyQt5.Qt import (
     QLineEdit, QAbstractListModel, Qt, pyqtSignal, QObject, QKeySequence,
-    QApplication, QListView, QPoint, QModelIndex, QFont, QFontInfo,
+    QApplication, QListView, QPoint, QModelIndex,
     QStyleOptionComboBox, QStyle, QComboBox, QTimer)
 try:
     from PyQt5 import sip
 except ImportError:
     import sip
 
-from calibre.constants import isosx, get_osx_version
+from calibre.constants import ismacos
 from calibre.utils.icu import sort_key, primary_startswith, primary_contains
 from calibre.gui2.widgets import EnComboBox, LineEditECM
 from calibre.utils.config import tweaks
@@ -38,8 +36,10 @@ class CompleteModel(QAbstractListModel):  # {{{
         self.current_prefix = ''
 
     def set_items(self, items):
-        items = [unicode_type(x).strip() if self.strip_completion_entries else unicode_type(x) for x in items]
-        items = [x for x in items if x]
+        if self.strip_completion_entries:
+            items = (str(x).strip() for x in items if x)
+        else:
+            items = (str(x) for x in items if x)
         items = tuple(sorted(items, key=self.sort_func))
         self.beginResetModel()
         self.all_items = self.current_items = items
@@ -86,15 +86,15 @@ class Completer(QListView):  # {{{
     relayout_needed = pyqtSignal()
 
     def __init__(self, completer_widget, max_visible_items=7, sort_func=sort_key, strip_completion_entries=True):
-        QListView.__init__(self)
+        QListView.__init__(self, completer_widget)
         self.disable_popup = False
-        self.completer_widget = weakref.ref(completer_widget)
         self.setWindowFlags(Qt.Popup)
         self.max_visible_items = max_visible_items
         self.setEditTriggers(self.NoEditTriggers)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setSelectionBehavior(self.SelectRows)
         self.setSelectionMode(self.SingleSelection)
+        self.setUniformItemSizes(True)
         self.setAlternatingRowColors(True)
         self.setModel(CompleteModel(self, sort_func=sort_func, strip_completion_entries=strip_completion_entries))
         self.setMouseTracking(True)
@@ -145,7 +145,7 @@ class Completer(QListView):  # {{{
             return
         p = self
         m = p.model()
-        widget = self.completer_widget()
+        widget = self.parent()
         if widget is None:
             return
         screen = QApplication.desktop().availableGeometry(widget)
@@ -179,14 +179,6 @@ class Completer(QListView):  # {{{
             self.setCurrentIndex(self.model().index(0))
 
         if not p.isVisible():
-            if isosx and get_osx_version() >= (10, 9, 0):
-                # On mavericks the popup menu seems to use a font smaller than
-                # the widgets font, see for example:
-                # https://bugs.launchpad.net/bugs/1243761
-                fp = QFontInfo(widget.font())
-                f = QFont()
-                f.setPixelSize(fp.pixelSize())
-                self.setFont(f)
             p.show()
 
     def debug_event(self, ev):
@@ -205,7 +197,7 @@ class Completer(QListView):  # {{{
 
     def eventFilter(self, obj, e):
         'Redirect key presses from the popup to the widget'
-        widget = self.completer_widget()
+        widget = self.parent()
         if widget is None or sip.isdeleted(widget):
             return False
         etype = e.type()
@@ -261,7 +253,7 @@ class Completer(QListView):  # {{{
                 self.hide()
             if e.isAccepted():
                 return True
-        elif isosx and etype == e.InputMethodQuery and e.queries() == (Qt.ImHints | Qt.ImEnabled) and self.isVisible():
+        elif ismacos and etype == e.InputMethodQuery and e.queries() == (Qt.ImHints | Qt.ImEnabled) and self.isVisible():
             # In Qt 5 the Esc key causes this event and the line edit does not
             # handle it, which causes the parent dialog to be closed
             # See https://bugreports.qt-project.org/browse/QTBUG-41806

@@ -660,7 +660,7 @@ class BooksModel(QAbstractTableModel):  # {{{
                                                   cover_as_data=True)
                         newmi = None
                         if use_plugboard and format.lower() in plugboard_formats:
-                            plugboards = self.db.prefs.get('plugboards', {})
+                            plugboards = self.db.new_api.pref('plugboards', {})
                             cpb = find_plugboard(use_plugboard, format.lower(),
                                                  plugboards)
                             if cpb:
@@ -769,11 +769,21 @@ class BooksModel(QAbstractTableModel):  # {{{
                 bn = self.bool_no_icon
                 by = self.bool_yes_icon
 
-                def func(idx):
-                    val = force_to_bool(fffunc(field_obj, idfunc(idx)))
-                    if val is None:
-                        return None if bt else bn
-                    return by if val else bn
+                if dt != 'bool':
+                    def func(idx):
+                        val = fffunc(field_obj, idfunc(idx))
+                        if val is None:
+                            return None
+                        val = force_to_bool(val)
+                        if val is None:
+                            return None
+                        return by if val else bn
+                else:
+                    def func(idx):
+                        val = force_to_bool(fffunc(field_obj, idfunc(idx)))
+                        if val is None:
+                            return None if bt else bn
+                        return by if val else bn
             elif field == 'size':
                 sz_mult = 1/(1024**2)
 
@@ -895,7 +905,7 @@ class BooksModel(QAbstractTableModel):  # {{{
         if col >= len(self.column_to_dc_map):
             return None
         if role == Qt.DisplayRole:
-            rules = self.db.prefs['column_icon_rules']
+            rules = self.db.new_api.pref('column_icon_rules')
             if rules:
                 key = self.column_map[col]
                 id_ = None
@@ -928,7 +938,7 @@ class BooksModel(QAbstractTableModel):  # {{{
             id_ = self.id(index)
             self.column_color.mi = None
 
-            for k, fmt in self.db.prefs['column_color_rules']:
+            for k, fmt in self.db.new_api.pref('column_color_rules', ()):
                 if k == key:
                     ccol = self.column_color(id_, key, fmt, self.db,
                                          self.color_cache, self.color_template_cache)
@@ -952,7 +962,7 @@ class BooksModel(QAbstractTableModel):  # {{{
 
             if self.color_row_fmt_cache is None:
                 self.color_row_fmt_cache = tuple(fmt for key, fmt in
-                    self.db.prefs['column_color_rules'] if key == color_row_key)
+                    self.db.new_api.pref('column_color_rules', ()) if key == color_row_key)
             for fmt in self.color_row_fmt_cache:
                 ccol = self.column_color(id_, color_row_key, fmt, self.db,
                                          self.color_cache, self.color_template_cache)
@@ -965,7 +975,7 @@ class BooksModel(QAbstractTableModel):  # {{{
             default_icon = None
             if self.column_to_dc_decorator_map[col] is not None:
                 default_icon = self.column_to_dc_decorator_map[index.column()](index.row())
-            rules = self.db.prefs['column_icon_rules']
+            rules = self.db.new_api.pref('column_icon_rules')
             if rules:
                 key = self.column_map[col]
                 id_ = None

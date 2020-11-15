@@ -5,16 +5,16 @@
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import os, sys, time, ctypes
-from ctypes.wintypes import HLOCAL, LPCWSTR
+import os, sys, time, traceback
 from threading import Thread
 
-import winerror
 
 from calibre import guess_type, prints
-from calibre.constants import is64bit, isportable, isfrozen, __version__, DEBUG, plugins
+from calibre.constants import is64bit, isportable, isfrozen, __version__, DEBUG
 from calibre.utils.winreg.lib import Key, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE
+from calibre.utils.lock import singleinstance
 from polyglot.builtins import iteritems, itervalues
+from calibre_extensions import winutil
 
 # See https://msdn.microsoft.com/en-us/library/windows/desktop/cc144154(v=vs.85).aspx
 
@@ -31,7 +31,7 @@ def default_programs():
 
         'ebook-edit.exe': {
             'icon_id':'editor_icon',
-            'description': _('The calibre e-book editor. It can be used to edit common e-book formats.'),
+            'description': _('The calibre E-book editor. It can be used to edit common e-book formats.'),
             'capability_name': 'Editor' + ('64bit' if is64bit else ''),
             'name': 'calibre Editor' + (' 64-bit' if is64bit else ''),
             'assoc_name': 'calibreEditor' + ('64bit' if is64bit else ''),
@@ -131,7 +131,6 @@ def register():
         with Key(r'Software\RegisteredApplications') as key:
             key.set(data['name'], capabilities_path)
 
-    winutil = plugins['winutil'][0]
     winutil.notify_associations_changed()
 
 
@@ -166,11 +165,9 @@ class Register(Thread):
         try:
             self.do_register()
         except Exception:
-            import traceback
             traceback.print_exc()
 
     def do_register(self):
-        from calibre.utils.lock import singleinstance
         try:
             check_allowed()
         except NotAllowed:
@@ -179,11 +176,11 @@ class Register(Thread):
             if self.prefs.get('windows_register_default_programs', None) != __version__:
                 self.prefs['windows_register_default_programs'] = __version__
                 if DEBUG:
-                    st = time.time()
+                    st = time.monotonic()
                     prints('Registering with default programs...')
                 register()
                 if DEBUG:
-                    prints('Registered with default programs in %.1f seconds' % (time.time() - st))
+                    prints('Registered with default programs in %.1f seconds' % (time.monotonic() - st))
 
     def __enter__(self):
         return self
@@ -199,7 +196,7 @@ def get_prog_id_map(base, key_path):
     try:
         k = Key(open_at=key_path, root=base)
     except OSError as err:
-        if err.winerror == winerror.ERROR_FILE_NOT_FOUND:
+        if err.winerror == winutil.ERROR_FILE_NOT_FOUND:
             return desc, ans
         raise
     with k:
@@ -215,7 +212,7 @@ def get_open_data(base, prog_id):
     try:
         k = Key(open_at=r'Software\Classes\%s' % prog_id, root=base)
     except OSError as err:
-        if err.winerror == winerror.ERROR_FILE_NOT_FOUND:
+        if err.winerror == winutil.ERROR_FILE_NOT_FOUND:
             return None, None, None
     with k:
         cmd = k.get(sub_key=r'shell\open\command')
@@ -226,33 +223,17 @@ def get_open_data(base, prog_id):
         return cmd, k.get(sub_key='DefaultIcon'), k.get_mui_string('FriendlyTypeName') or k.get()
 
 
-CommandLineToArgvW = ctypes.windll.shell32.CommandLineToArgvW
-CommandLineToArgvW.arg_types = [LPCWSTR, ctypes.POINTER(ctypes.c_int)]
-CommandLineToArgvW.restype = ctypes.POINTER(LPCWSTR)
-LocalFree = ctypes.windll.kernel32.LocalFree
-LocalFree.res_type = HLOCAL
-LocalFree.arg_types = [HLOCAL]
-
-
 def split_commandline(commandline):
     # CommandLineToArgvW returns path to executable if called with empty string.
     if not commandline.strip():
         return []
-    num = ctypes.c_int(0)
-    result_pointer = CommandLineToArgvW(commandline.lstrip(), ctypes.byref(num))
-    if not result_pointer:
-        raise ctypes.WinError()
-    result_array_type = LPCWSTR * num.value
-    result = [arg for arg in result_array_type.from_address(ctypes.addressof(result_pointer.contents))]
-    LocalFree(result_pointer)
-    return result
+    return list(winutil.parse_cmdline(commandline))
 
 
 def friendly_app_name(prog_id=None, exe=None):
     try:
-        return plugins['winutil'][0].friendly_name(prog_id, exe)
+        return winutil.friendly_name(prog_id, exe)
     except Exception:
-        import traceback
         traceback.print_exc()
 
 
@@ -267,7 +248,7 @@ def find_programs(extensions):
         try:
             k = Key(open_at=r'Software\RegisteredApplications', root=base)
         except OSError as err:
-            if err.winerror == winerror.ERROR_FILE_NOT_FOUND:
+            if err.winerror == winutil.ERROR_FILE_NOT_FOUND:
                 continue
             raise
         with k:
@@ -275,7 +256,6 @@ def find_programs(extensions):
                 try:
                     app_desc, prog_id_map = get_prog_id_map(base, key_path)
                 except Exception:
-                    import traceback
                     traceback.print_exc()
                     continue
                 for ext in extensions:
@@ -293,7 +273,7 @@ def find_programs(extensions):
         try:
             k = Key(open_at=r'Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.%s\OpenWithProgIDs' % ext, root=HKEY_CURRENT_USER)
         except OSError as err:
-            if err.winerror == winerror.ERROR_FILE_NOT_FOUND:
+            if err.winerror == winutil.ERROR_FILE_NOT_FOUND:
                 continue
         for prog_id in itervalues(k):
             if prog_id and prog_id not in seen_prog_ids:

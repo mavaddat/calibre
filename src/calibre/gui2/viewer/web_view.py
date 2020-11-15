@@ -7,10 +7,9 @@ import os
 import shutil
 import sys
 from itertools import count
-
 from PyQt5.Qt import (
-    QApplication, QBuffer, QByteArray, QFontDatabase, QFontInfo, QHBoxLayout, QSize, QT_VERSION,
-    Qt, QTimer, QUrl, QWidget, pyqtSignal
+    QT_VERSION, QApplication, QBuffer, QByteArray, QFontDatabase, QFontInfo,
+    QHBoxLayout, QMimeData, QSize, Qt, QTimer, QUrl, QWidget, pyqtSignal
 )
 from PyQt5.QtWebEngineCore import QWebEngineUrlSchemeHandler
 from PyQt5.QtWebEngineWidgets import (
@@ -20,7 +19,7 @@ from PyQt5.QtWebEngineWidgets import (
 from calibre import as_unicode, prints
 from calibre.constants import (
     FAKE_HOST, FAKE_PROTOCOL, __version__, in_develop_mode, is_running_from_develop,
-    isosx, iswindows
+    ismacos, iswindows
 )
 from calibre.ebooks.metadata.book.base import field_metadata
 from calibre.ebooks.oeb.polish.utils import guess_type
@@ -204,7 +203,7 @@ def create_profile():
     ans = getattr(create_profile, 'ans', None)
     if ans is None:
         ans = QWebEngineProfile(QApplication.instance())
-        osname = 'windows' if iswindows else ('macos' if isosx else 'linux')
+        osname = 'windows' if iswindows else ('macos' if ismacos else 'linux')
         # DO NOT change the user agent as it is used to workaround
         # Qt bugs see workaround_qt_bug() in ajax.pyj
         ua = 'calibre-viewer {} {}'.format(__version__, osname)
@@ -241,7 +240,7 @@ class ViewerBridge(Bridge):
     new_bookmark = from_js(object)
     toggle_inspector = from_js()
     toggle_lookup = from_js(object)
-    show_search = from_js(object)
+    show_search = from_js(object, object)
     search_result_not_found = from_js(object)
     find_next = from_js(object)
     quit = from_js()
@@ -251,7 +250,7 @@ class ViewerBridge(Bridge):
     ask_for_open = from_js(object)
     selection_changed = from_js(object, object)
     autoscroll_state_changed = from_js(object)
-    copy_selection = from_js(object)
+    copy_selection = from_js(object, object)
     view_image = from_js(object)
     copy_image = from_js(object)
     change_background_image = from_js(object)
@@ -339,11 +338,13 @@ class WebPage(QWebEnginePage):
         self.bridge = ViewerBridge(self)
         self.bridge.copy_selection.connect(self.trigger_copy)
 
-    def trigger_copy(self, what):
-        if what:
-            QApplication.instance().clipboard().setText(what)
-        else:
-            self.triggerAction(self.Copy)
+    def trigger_copy(self, text, html):
+        if text:
+            md = QMimeData()
+            md.setText(text)
+            if html:
+                md.setHtml(html)
+            QApplication.instance().clipboard().setMimeData(md)
 
     def javaScriptConsoleMessage(self, level, msg, linenumber, source_id):
         prefix = {QWebEnginePage.InfoMessageLevel: 'INFO', QWebEnginePage.WarningMessageLevel: 'WARNING'}.get(
@@ -431,7 +432,7 @@ class WebView(RestartingWebEngineView):
     cfi_changed = pyqtSignal(object)
     reload_book = pyqtSignal()
     toggle_toc = pyqtSignal()
-    show_search = pyqtSignal(object)
+    show_search = pyqtSignal(object, object)
     search_result_not_found = pyqtSignal(object)
     find_next = pyqtSignal(object)
     toggle_bookmarks = pyqtSignal()
@@ -597,9 +598,14 @@ class WebView(RestartingWebEngineView):
     def on_content_file_changed(self, data):
         self.current_content_file = data
 
-    def start_book_load(self, initial_position=None, highlights=None):
+    def start_book_load(self, initial_position=None, highlights=None, current_book_data=None):
         key = (set_book_path.path,)
-        self.execute_when_ready('start_book_load', key, initial_position, set_book_path.pathtoebook, highlights or [])
+        cbd = current_book_data or {}
+        book_url = None
+        if 'calibre_library_id' in cbd:
+            lid = cbd['calibre_library_id'].encode('utf-8').hex()
+            book_url = f'calibre://view-book/_hex_-{lid}/{cbd["calibre_book_id"]}/{cbd["calibre_book_fmt"]}'
+        self.execute_when_ready('start_book_load', key, initial_position, set_book_path.pathtoebook, highlights or [], book_url)
 
     def execute_when_ready(self, action, *args):
         if self.bridge.ready:

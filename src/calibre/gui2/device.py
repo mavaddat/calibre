@@ -10,7 +10,7 @@ from threading import Thread, Event
 from PyQt5.Qt import (
     QMenu, QAction, QActionGroup, QIcon, Qt, pyqtSignal, QDialog,
     QObject, QVBoxLayout, QDialogButtonBox, QCursor, QCoreApplication,
-    QApplication, QEventLoop)
+    QApplication, QEventLoop, QTimer)
 
 from calibre.customize.ui import (available_input_formats, available_output_formats,
     device_plugins, disabled_device_plugins)
@@ -1100,7 +1100,12 @@ class DeviceMixin(object):  # {{{
             # Empty any device view information
             for v in dviews:
                 v.set_database([])
-            self.refresh_ondevice()
+            # Use a singleShot timer to ensure that the job event queue has
+            # emptied before the ondevice column is removed from the booklist.
+            # This deals with race conditions when repainting the booklist
+            # causing incorrect evaluation of the connected_device_name
+            # formatter function
+            QTimer.singleShot(0, self.refresh_ondevice)
         device_signals.device_connection_changed.emit(connected)
 
     def info_read(self, job):
@@ -1347,12 +1352,12 @@ class DeviceMixin(object):  # {{{
                 return
             metadata = self.library_view.model().metadata_for(ids)
             names = []
-            for mi in metadata:
+            for book_id, mi in zip(ids, metadata):
                 prefix = ascii_filename(mi.title)
                 if not isinstance(prefix, unicode_type):
                     prefix = prefix.decode(preferred_encoding, 'replace')
                 prefix = ascii_filename(prefix)
-                names.append('%s_%d%s'%(prefix, id,
+                names.append('%s_%d%s'%(prefix, book_id,
                     os.path.splitext(files[-1])[1]))
                 self.update_thumbnail(mi)
             dynamic.set('catalogs_to_be_synced', set())
@@ -1372,7 +1377,7 @@ class DeviceMixin(object):  # {{{
         'Set of ids to be sent to device'
         ans = []
         try:
-            ans = self.library_view.model().db.prefs.get('news_to_be_synced',
+            ans = self.library_view.model().db.new_api.pref('news_to_be_synced',
                     [])
         except:
             import traceback
@@ -1563,7 +1568,7 @@ class DeviceMixin(object):  # {{{
         '''
         Upload metadata to device.
         '''
-        plugboards = self.library_view.model().db.prefs.get('plugboards', {})
+        plugboards = self.library_view.model().db.new_api.pref('plugboards', {})
         self.device_manager.sync_booklists(Dispatcher(lambda x: x),
                                            self.booklists(), plugboards)
 
@@ -1571,7 +1576,7 @@ class DeviceMixin(object):  # {{{
         '''
         Upload metadata to device.
         '''
-        plugboards = self.library_view.model().db.prefs.get('plugboards', {})
+        plugboards = self.library_view.model().db.new_api.pref('plugboards', {})
         self.device_manager.sync_booklists(FunctionDispatcher(self.metadata_synced),
                                            self.booklists(), plugboards,
                                            add_as_step_to_job=add_as_step_to_job)
@@ -1611,7 +1616,7 @@ class DeviceMixin(object):  # {{{
         :param files: List of either paths to files or file like objects
         '''
         titles = [i.title for i in metadata]
-        plugboards = self.library_view.model().db.prefs.get('plugboards', {})
+        plugboards = self.library_view.model().db.new_api.pref('plugboards', {})
         job = self.device_manager.upload_books(
                 FunctionDispatcher(self.books_uploaded),
                 files, names, on_card=on_card,
@@ -1947,7 +1952,7 @@ class DeviceMixin(object):  # {{{
 
             if update_metadata:
                 if self.device_manager.is_device_connected:
-                    plugboards = self.library_view.model().db.prefs.get('plugboards', {})
+                    plugboards = self.library_view.model().db.new_api.pref('plugboards', {})
                     self.device_manager.sync_booklists(
                                 FunctionDispatcher(self.metadata_synced), booklists,
                                 plugboards, add_as_step_to_job)

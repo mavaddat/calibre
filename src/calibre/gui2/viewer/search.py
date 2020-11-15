@@ -3,14 +3,14 @@
 # License: GPL v3 Copyright: 2020, Kovid Goyal <kovid at kovidgoyal.net>
 
 import json
-from collections import Counter, OrderedDict
-from threading import Thread
-
 import regex
+from collections import Counter, OrderedDict
 from PyQt5.Qt import (
     QCheckBox, QComboBox, QFont, QHBoxLayout, QIcon, QLabel, Qt, QToolButton,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, pyqtSignal
 )
+from threading import Thread
+from html import escape
 
 from calibre.ebooks.conversion.search_replace import REGEX_FLAGS
 from calibre.gui2 import warning_dialog
@@ -282,7 +282,7 @@ def toc_nodes_for_search_result(sr):
     return tuple(tmap.toc_nodes_for_offset(sr.offset))
 
 
-def search_in_name(name, search_query, ctx_size=50):
+def search_in_name(name, search_query, ctx_size=75):
     raw = searchable_text_for_name(name)[0]
     for match in search_query.regex.finditer(raw):
         start, end = match.span()
@@ -468,9 +468,10 @@ class Results(QTreeWidget):  # {{{
             lines = []
             for i, node in enumerate(toc_nodes):
                 lines.append('\xa0\xa0' * i + '➤ ' + (node.get('title') or _('Unknown')))
-            tt = ngettext('Table of Contents section:', 'Table of Contents sections:', len(lines))
-            tt += '\n' + '\n'.join(lines)
-            section.setToolTip(0, tt)
+            if lines:
+                tt = ngettext('Table of Contents section:', 'Table of Contents sections:', len(lines))
+                tt += '\n' + '\n'.join(lines)
+                section.setToolTip(0, tt)
             self.section_map[section_key] = section
             self.addTopLevelItem(section)
             section.setExpanded(True)
@@ -478,6 +479,10 @@ class Results(QTreeWidget):  # {{{
         item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemNeverHasChildren)
         item.setData(0, Qt.UserRole, result)
         item.setData(0, Qt.UserRole + 1, len(self.search_results))
+        if isinstance(result, SearchResult):
+            tt = '<p>…' + escape(result.before, False) + '<b>' + escape(
+                result.text, False) + '</b>' + escape(result.after, False) + '…'
+            item.setData(0, Qt.ToolTipRole, tt)
         item.setIcon(0, self.blank_icon)
         self.item_map[len(self.search_results)] = item
         self.search_results.append(result)
@@ -679,6 +684,9 @@ class SearchPanel(QWidget):  # {{{
 
     def find_next_requested(self, previous):
         self.results.find_next(previous)
+
+    def trigger(self):
+        self.search_input.find_next()
 
     def do_show_search_result(self, sr):
         self.show_search_result.emit(sr.for_js)
