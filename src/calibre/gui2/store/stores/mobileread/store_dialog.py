@@ -7,7 +7,7 @@ __copyright__ = '2011, John Schember <john@nachtimwald.com>'
 __docformat__ = 'restructuredtext en'
 
 
-from PyQt5.Qt import (Qt, QDialog, QIcon, QComboBox, QApplication)
+from qt.core import (Qt, QDialog, QIcon, QComboBox, QApplication)
 
 from calibre.gui2.store.stores.mobileread.adv_search_builder import AdvSearchBuilderDialog
 from calibre.gui2.store.stores.mobileread.models import BooksModel
@@ -22,7 +22,7 @@ class MobileReadStoreDialog(QDialog, Ui_Dialog):
 
         self.plugin = plugin
         self.search_query.initialize('store_mobileread_search')
-        self.search_query.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.search_query.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.search_query.setMinimumContentsLength(25)
 
         self.adv_search_button.setIcon(QIcon(I('search.png')))
@@ -52,7 +52,7 @@ class MobileReadStoreDialog(QDialog, Ui_Dialog):
 
     def build_adv_search(self):
         adv = AdvSearchBuilderDialog(self)
-        if adv.exec_() == QDialog.Accepted:
+        if adv.exec_() == QDialog.DialogCode.Accepted:
             self.search_query.setText(adv.search_string())
 
     def restore_state(self):
@@ -71,7 +71,7 @@ class MobileReadStoreDialog(QDialog, Ui_Dialog):
                 self.results_view.resizeColumnToContents(i)
 
         self.results_view.model().sort_col = self.plugin.config.get('dialog_sort_col', 0)
-        self.results_view.model().sort_order = self.plugin.config.get('dialog_sort_order', Qt.AscendingOrder)
+        self.results_view.model().sort_order = self.plugin.config.get('dialog_sort_order', Qt.SortOrder.AscendingOrder)
         self.results_view.model().sort(self.results_view.model().sort_col, self.results_view.model().sort_order)
         self.results_view.header().setSortIndicator(self.results_view.model().sort_col, self.results_view.model().sort_order)
 

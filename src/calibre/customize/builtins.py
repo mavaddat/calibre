@@ -21,7 +21,7 @@ class PML2PMLZ(FileTypePlugin):
     name = 'PML to PMLZ'
     author = 'John Schember'
     description = _('Create a PMLZ archive containing the PML file '
-        'and all images in the directory pmlname_img or images. '
+        'and all images in the folder pmlname_img or images. '
         'This plugin is run every time you add '
         'a PML file to the library.')
     version = numeric_version
@@ -133,7 +133,7 @@ plugins += [HTML2ZIP, PML2PMLZ, TXT2TXTZ, ArchiveExtract, KPFExtract]
 class ComicMetadataReader(MetadataReaderPlugin):
 
     name = 'Read comic metadata'
-    file_types = {'cbr', 'cbz'}
+    file_types = {'cbr', 'cbz', 'cb7'}
     description = _('Extract cover from comic files')
 
     def customization_help(self, gui=False):
@@ -148,8 +148,12 @@ class ComicMetadataReader(MetadataReaderPlugin):
                 ftype = 'cbr'
             elif id_.startswith(b'PK'):
                 ftype = 'cbz'
+            elif id_.startswith(b'7z'):
+                ftype = 'cb7'
         if ftype == 'cbr':
             from calibre.utils.unrar import extract_cover_image
+        elif ftype == 'cb7':
+            from calibre.utils.seven_zip import extract_cover_image
         else:
             from calibre.libunzip import extract_cover_image
         from calibre.ebooks.metadata import MetaInformation
@@ -828,11 +832,10 @@ from calibre.ebooks.metadata.sources.google import GoogleBooks
 from calibre.ebooks.metadata.sources.amazon import Amazon
 from calibre.ebooks.metadata.sources.edelweiss import Edelweiss
 from calibre.ebooks.metadata.sources.openlibrary import OpenLibrary
-from calibre.ebooks.metadata.sources.overdrive import OverDrive
 from calibre.ebooks.metadata.sources.google_images import GoogleImages
 from calibre.ebooks.metadata.sources.big_book_search import BigBookSearch
 
-plugins += [GoogleBooks, GoogleImages, Amazon, Edelweiss, OpenLibrary, OverDrive, BigBookSearch]
+plugins += [GoogleBooks, GoogleImages, Amazon, Edelweiss, OpenLibrary, BigBookSearch]
 
 # }}}
 
@@ -966,6 +969,12 @@ class ActionOpenFolder(InterfaceActionBase):
             ' calibre library')
 
 
+class ActionAutoscrollBooks(InterfaceActionBase):
+    name = 'Autoscroll Books'
+    actual_plugin = 'calibre.gui2.actions.auto_scroll:AutoscrollBooksAction'
+    description = _('Auto scroll through the list of books')
+
+
 class ActionSendToDevice(InterfaceActionBase):
     name = 'Send To Device'
     actual_plugin = 'calibre.gui2.actions.device:SendToDeviceAction'
@@ -1020,6 +1029,12 @@ class ActionMatchBooks(InterfaceActionBase):
     name = 'Match Books'
     actual_plugin = 'calibre.gui2.actions.match_books:MatchBookAction'
     description = _('Match book on the devices to books in the library')
+
+
+class ActionShowMatchedBooks(InterfaceActionBase):
+    name = 'Show Matched Book In Library'
+    actual_plugin = 'calibre.gui2.actions.match_books:ShowMatchedBookAction'
+    description = _('Show the book in the calibre library that matches this book')
 
 
 class ActionCopyToLibrary(InterfaceActionBase):
@@ -1101,11 +1116,11 @@ plugins += [ActionAdd, ActionFetchAnnotations, ActionGenerateCatalog,
         ActionFetchNews, ActionSaveToDisk, ActionQuickview, ActionPolish,
         ActionShowBookDetails,ActionRestart, ActionOpenFolder, ActionConnectShare,
         ActionSendToDevice, ActionHelp, ActionPreferences, ActionSimilarBooks,
-        ActionAddToLibrary, ActionEditCollections, ActionMatchBooks, ActionChooseLibrary,
+        ActionAddToLibrary, ActionEditCollections, ActionMatchBooks, ActionShowMatchedBooks, ActionChooseLibrary,
         ActionCopyToLibrary, ActionTweakEpub, ActionUnpackBook, ActionNextMatch, ActionStore,
         ActionPluginUpdater, ActionPickRandom, ActionEditToC, ActionSortBy,
         ActionMarkBooks, ActionEmbed, ActionTemplateTester, ActionTagMapper, ActionAuthorMapper,
-        ActionVirtualLibrary, ActionBrowseAnnotations, ActionTemplateFunctions]
+        ActionVirtualLibrary, ActionBrowseAnnotations, ActionTemplateFunctions, ActionAutoscrollBooks]
 
 # }}}
 
@@ -1612,17 +1627,6 @@ class StoreEbooksGratuitsStore(StoreBase):
 #     affiliate = True
 
 
-class StoreEKnigiStore(StoreBase):
-    name = 'еКниги'
-    author = 'Alex Stanev'
-    description = 'Онлайн книжарница за електронни книги и аудио риалити романи'
-    actual_plugin = 'calibre.gui2.store.stores.eknigi_plugin:eKnigiStore'
-
-    headquarters = 'BG'
-    formats = ['EPUB', 'PDF', 'HTML']
-    affiliate = True
-
-
 class StoreEmpikStore(StoreBase):
     name = 'Empik'
     author = 'Tomasz Długosz'
@@ -1898,7 +1902,6 @@ plugins += [
     StoreEbookpointStore,
     StoreEbookscomStore,
     StoreEbooksGratuitsStore,
-    StoreEKnigiStore,
     StoreEmpikStore,
     StoreFeedbooksStore,
     StoreGoogleBooksStore,

@@ -5,21 +5,21 @@ __license__ = 'GPL 3'
 __copyright__ = '2009, John Schember <john@nachtimwald.com>'
 __docformat__ = 'restructuredtext en'
 
-from PyQt5.Qt import QPrinter
+from qt.core import QPrinter
 
 UNITS = {
-            'millimeter' : QPrinter.Millimeter,
-            'point' : QPrinter.Point,
-            'inch' : QPrinter.Inch,
-            'pica' : QPrinter.Pica,
-            'didot' : QPrinter.Didot,
-            'cicero' : QPrinter.Cicero,
-            'devicepixel' : QPrinter.DevicePixel,
+            'millimeter' : QPrinter.Unit.Millimeter,
+            'point' : QPrinter.Unit.Point,
+            'inch' : QPrinter.Unit.Inch,
+            'pica' : QPrinter.Unit.Pica,
+            'didot' : QPrinter.Unit.Didot,
+            'cicero' : QPrinter.Unit.Cicero,
+            'devicepixel' : QPrinter.Unit.DevicePixel,
         }
 
 
 def unit(unit):
-    return UNITS.get(unit, QPrinter.Inch)
+    return UNITS.get(unit, QPrinter.Unit.Inch)
 
 
 PAPER_SIZES = {
@@ -62,13 +62,13 @@ def paper_size(size):
 
 
 ORIENTATIONS = {
-                'portrait' : QPrinter.Portrait,
-                'landscape' : QPrinter.Landscape,
+                'portrait' : QPrinter.Orientation.Portrait,
+                'landscape' : QPrinter.Orientation.Landscape,
                }
 
 
 def orientation(orientation):
-    return ORIENTATIONS.get(orientation, QPrinter.Portrait)
+    return ORIENTATIONS.get(orientation, QPrinter.Orientation.Portrait)
 
 
 def size(size):

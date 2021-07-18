@@ -12,7 +12,7 @@ from datetime import timedelta
 import calendar, textwrap
 from collections import OrderedDict
 
-from PyQt5.Qt import (
+from qt.core import (
     QDialog, Qt, QTime, QObject, QMenu, QHBoxLayout, QAction, QIcon, QMutex, QApplication,
     QTimer, pyqtSignal, QWidget, QGridLayout, QCheckBox, QTimeEdit, QLabel,
     QLineEdit, QDoubleSpinBox, QSize, QTreeView, QSizePolicy, QToolButton,
@@ -39,12 +39,19 @@ def convert_day_time_schedule(val):
 
 class RecipesView(QTreeView):
 
+    item_activated = pyqtSignal(object)
+
     def __init__(self, parent):
         QTreeView.__init__(self, parent)
         self.setAnimated(True)
         self.setHeaderHidden(True)
         self.setObjectName('recipes')
-        self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.setExpandsOnDoubleClick(True)
+        self.doubleClicked.connect(self.double_clicked)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
+
+    def double_clicked(self, index):
+        self.item_activated.emit(index)
 
     def currentChanged(self, current, previous):
         QTreeView.currentChanged(self, current, previous)
@@ -223,7 +230,6 @@ class SchedulerDialog(QDialog):
         self.previous_urn = None
 
         self.setWindowIcon(QIcon(I('scheduler.png')))
-        self.setWindowTitle(_("Schedule news download"))
         self.l = l = QGridLayout(self)
 
         # Left panel
@@ -237,16 +243,15 @@ class SchedulerDialog(QDialog):
         b.clicked.connect(self.search.do_search)
         h.addWidget(s), h.addWidget(b)
         self.recipes = RecipesView(self)
-        l.addWidget(self.recipes, 1, 0, 1, 1)
+        l.addWidget(self.recipes, 1, 0, 2, 1)
         self.recipe_model = recipe_model
         self.recipe_model.do_refresh()
         self.recipes.setModel(self.recipe_model)
-        self.recipes.setFocus(Qt.OtherFocusReason)
-        self.count_label = la = QLabel(_('%s news sources') % self.recipe_model.showing_count)
-        la.setAlignment(Qt.AlignCenter)
-        l.addWidget(la, 2, 0, 1, 1)
+        self.recipes.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.recipes.item_activated.connect(self.download_clicked)
+        self.setWindowTitle(_("Schedule news download [{} sources]").format(self.recipe_model.showing_count))
         self.search.search.connect(self.recipe_model.search)
-        self.recipe_model.searched.connect(self.search.search_done, type=Qt.QueuedConnection)
+        self.recipe_model.searched.connect(self.search.search_done, type=Qt.ConnectionType.QueuedConnection)
         self.recipe_model.searched.connect(self.search_done)
 
         # Right Panel
@@ -258,7 +263,7 @@ class SchedulerDialog(QDialog):
         self.detail_box.setVisible(False)
         self.detail_box.setCurrentIndex(0)
         v.addWidget(self.detail_box)
-        v.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+        v.addItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
 
         # First Tab (scheduling)
         self.tab = QWidget()
@@ -270,8 +275,8 @@ class SchedulerDialog(QDialog):
         vt.addWidget(la)
         self.frame = f = QFrame(self.tab)
         vt.addWidget(f)
-        f.setFrameShape(f.StyledPanel)
-        f.setFrameShadow(f.Raised)
+        f.setFrameShape(QFrame.Shape.StyledPanel)
+        f.setFrameShadow(QFrame.Shadow.Raised)
         f.v = vf = QVBoxLayout(f)
         self.schedule = s = QCheckBox(_("&Schedule for download:"), f)
         self.schedule.stateChanged[int].connect(self.toggle_schedule_info)
@@ -302,7 +307,7 @@ class SchedulerDialog(QDialog):
         g.addWidget(la), g.addWidget(un, 0, 1)
         acc.pwla = la = QLabel(_("&Password:"))
         self.password = pw = QLineEdit(self)
-        pw.setEchoMode(QLineEdit.Password), la.setBuddy(pw)
+        pw.setEchoMode(QLineEdit.EchoMode.Password), la.setBuddy(pw)
         g.addWidget(la), g.addWidget(pw, 1, 1)
         self.show_password = spw = QCheckBox(_("&Show password"), self.account)
         spw.stateChanged[int].connect(self.set_pw_echo_mode)
@@ -338,7 +343,7 @@ class SchedulerDialog(QDialog):
             " older than a number of days, below, takes priority over this setting."))
         ki.setSpecialValueText(_("all issues")), ki.setSuffix(_(" issues"))
         g.addWidget(la), g.addWidget(ki, 2, 1)
-        si = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        si = QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
         g.addItem(si, 3, 1, 1, 1)
 
         # Bottom area
@@ -358,9 +363,9 @@ class SchedulerDialog(QDialog):
         b.setToolTip(_("Download all scheduled news sources at once"))
         b.clicked.connect(self.download_all_clicked)
         self.l.addWidget(b, 3, 0, 1, 1)
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         bb.accepted.connect(self.accept), bb.rejected.connect(self.reject)
-        self.download_button = b = bb.addButton(_('&Download now'), bb.ActionRole)
+        self.download_button = b = bb.addButton(_('&Download now'), QDialogButtonBox.ButtonRole.ActionRole)
         b.setIcon(QIcon(I('arrow-down.png'))), b.setVisible(False)
         b.clicked.connect(self.download_clicked)
         self.l.addWidget(bb, 3, 1, 1, 1)
@@ -373,8 +378,8 @@ class SchedulerDialog(QDialog):
         return QSize(800, 600)
 
     def set_pw_echo_mode(self, state):
-        self.password.setEchoMode(self.password.Normal
-                if state == Qt.Checked else self.password.Password)
+        self.password.setEchoMode(QLineEdit.EchoMode.Normal
+                if state == Qt.CheckState.Checked else QLineEdit.EchoMode.Password)
 
     def schedule_type_selected(self, *args):
         for i, st in enumerate(self.SCHEDULE_TYPES):
@@ -383,7 +388,7 @@ class SchedulerDialog(QDialog):
                 break
 
     def keyPressEvent(self, ev):
-        if ev.key() not in (Qt.Key_Enter, Qt.Key_Return):
+        if ev.key() not in (Qt.Key.Key_Enter, Qt.Key.Key_Return):
             return QDialog.keyPressEvent(self, ev)
 
     def break_cycles(self):
@@ -397,7 +402,7 @@ class SchedulerDialog(QDialog):
         self.recipe_model = None
 
     def search_done(self, *args):
-        if self.recipe_model.showing_count < 10:
+        if self.recipe_model.showing_count < 20:
             self.recipes.expandAll()
 
     def toggle_schedule_info(self, *args):
@@ -581,7 +586,7 @@ class Scheduler(QObject):
 
         self.recipe_model = RecipeModel()
         self.db = db
-        self.lock = QMutex(QMutex.Recursive)
+        self.lock = QMutex(QMutex.RecursionMode.Recursive)
         self.download_queue = set()
 
         self.news_menu = QMenu()

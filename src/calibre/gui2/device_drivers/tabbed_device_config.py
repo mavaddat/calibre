@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 import weakref, textwrap
 
-from PyQt5.Qt import (
+from qt.core import (
     QWidget, QLabel, QTabWidget, QGridLayout, QLineEdit, QVBoxLayout,
     QGroupBox, QComboBox, QSizePolicy, QDialog, QDialogButtonBox, QCheckBox,
     QSpacerItem)
@@ -89,8 +89,8 @@ class TabbedDeviceConfig(QTabWidget):
             self.formats.hide()
 
         self.opt_use_subdirs = create_checkbox(
-                                           _("Use sub-directories"),
-                                           _('Place files in sub-directories if the device supports them'),
+                                           _("Use sub-folders"),
+                                           _('Place files in sub-folders if the device supports them'),
                                            device_settings.use_subdirs
                                            )
         self.opt_read_metadata = create_checkbox(
@@ -311,7 +311,7 @@ class ExtraCustomization(DeviceConfigTab):  # {{{
                         self.extra_layout.addWidget(l, row_func(i + 2, 0), col_func(i))
                     self.extra_layout.addWidget(self.opt_extra_customization[i],
                                                 row_func(i + 2, 1), col_func(i))
-                spacerItem1 = QSpacerItem(10, 10, QSizePolicy.Minimum, QSizePolicy.Expanding)
+                spacerItem1 = QSpacerItem(10, 10, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding)
                 self.extra_layout.addItem(spacerItem1, row_func(i + 2 + 2, 1), 0, 1, 2)
                 self.extra_layout.setRowStretch(row_func(i + 2 + 2, 1), 2)
             else:
@@ -386,10 +386,10 @@ if __name__ == '__main__':
     d.l = QVBoxLayout()
     d.setLayout(d.l)
     d.l.addWidget(cw)
-    bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+    bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
     d.l.addWidget(bb)
     bb.accepted.connect(d.accept)
     bb.rejected.connect(d.reject)
-    if d.exec_() == d.Accepted:
+    if d.exec_() == QDialog.DialogCode.Accepted:
         cw.commit()
     dev.shutdown()

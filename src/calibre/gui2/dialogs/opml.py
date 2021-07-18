@@ -8,7 +8,7 @@ __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 from collections import defaultdict, namedtuple
 from operator import itemgetter
 
-from PyQt5.Qt import (
+from qt.core import (
     QDialog, QFormLayout, QHBoxLayout, QLineEdit, QToolButton, QIcon,
     QDialogButtonBox, Qt, QSpinBox, QCheckBox)
 
@@ -74,7 +74,7 @@ class ImportOPML(QDialog):
         h.addWidget(b)
         l.addRow(_('&OPML file:'), h)
         l.labelForField(h).setBuddy(p)
-        b.setFocus(Qt.OtherFocusReason)
+        b.setFocus(Qt.FocusReason.OtherFocusReason)
 
         self._articles_per_feed = a = QSpinBox(self)
         a.setMinimum(1), a.setMaximum(1000), a.setValue(100)
@@ -100,7 +100,7 @@ class ImportOPML(QDialog):
         r.setChecked(True)
         l.addRow(r)
 
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept), bb.rejected.connect(self.reject)
         l.addRow(bb)
 

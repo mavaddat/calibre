@@ -9,7 +9,7 @@ __docformat__ = 'restructuredtext en'
 from functools import partial
 from zipfile import ZipFile
 
-from PyQt5.Qt import (QToolButton, QAction, QIcon, QObject, QMenu,
+from qt.core import (QToolButton, QAction, QIcon, QObject, QMenu,
         QKeySequence)
 
 from calibre import prints
@@ -39,8 +39,8 @@ class InterfaceAction(QObject):
     priority takes precedence.
 
     Sub-classes should implement the :meth:`genesis`, :meth:`library_changed`,
-    :meth:`location_selected` :meth:`shutting_down`
-    and :meth:`initialization_complete` methods.
+    :meth:`location_selected`, :meth:`shutting_down`,
+    :meth:`initialization_complete` and :meth:`tag_browser_context_action` methods.
 
     Once initialized, this plugin has access to the main calibre GUI via the
     :attr:`gui` member. You can access other plugins by name, for example::
@@ -66,7 +66,7 @@ class InterfaceAction(QObject):
     priority = 1
 
     #: The menu popup type for when this plugin is added to a toolbar
-    popup_type = QToolButton.MenuButtonPopup
+    popup_type = QToolButton.ToolButtonPopupMode.MenuButtonPopup
 
     #: Whether this action should be auto repeated when its shortcut
     #: key is held down.
@@ -186,7 +186,7 @@ class InterfaceAction(QObject):
                 shortcut_name = unicode_type(spec[0])
 
             if shortcut_name and self.action_spec[0] and not (
-                    attr == 'qaction' and self.popup_type == QToolButton.InstantPopup):
+                    attr == 'qaction' and self.popup_type == QToolButton.ToolButtonPopupMode.InstantPopup):
                 try:
                     self.gui.keyboard.register_shortcut(self.unique_name + ' - ' + attr,
                         shortcut_name, default_keys=keys,
@@ -199,7 +199,7 @@ class InterfaceAction(QObject):
                     except:
                         pass
                     shortcut_action.setShortcuts([QKeySequence(key,
-                        QKeySequence.PortableText) for key in keys])
+                        QKeySequence.SequenceFormat.PortableText) for key in keys])
                 else:
                     self.shortcut_action_for_context_menu = shortcut_action
                     if ismacos:
@@ -231,7 +231,7 @@ class InterfaceAction(QObject):
         :param text: The text of the action.
         :param icon: Either a QIcon or a file name. The file name is passed to
             the I() builtin, so you do not need to pass the full path to the images
-            directory.
+            folder.
         :param shortcut: A string, a list of strings, None or False. If False,
             no keyboard shortcut is registered for this action. If None, a keyboard
             shortcut with no default keybinding is registered. String and list of
@@ -348,6 +348,17 @@ class InterfaceAction(QObject):
         completed.
         '''
         pass
+
+    def tag_browser_context_action(self, index):
+        '''
+        Called when displaying the context menu in the Tag browser. ``index`` is
+        the QModelIndex that points to the Tag browser item that was right clicked.
+        Test it for validity with index.valid() and get the underlying TagTreeItem
+        object with index.data(Qt.ItemDataRole.UserRole). This method must yield one
+        or more action objects that will be added to the context menu.
+        '''
+        if False:
+            yield QAction()
 
     def shutting_down(self):
         '''

@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 from functools import partial
 
-from PyQt5.Qt import QIcon, QSize
+from qt.core import QIcon, QSize
 
 from calibre.gui2 import error_dialog
 from calibre.gui2.actions import InterfaceAction
@@ -134,7 +134,7 @@ class StoreAction(InterfaceAction):
         confirm(('<p>' +
             _('calibre helps you find the e-books you want by searching '
             'the websites of various commercial and public domain '
-            'book sources for you.') +
+            'book sources.') +
             '<p>' +
             _('Using the integrated search you can easily find which '
             'store has the book you are looking for, at the best price. '

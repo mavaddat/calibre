@@ -10,10 +10,11 @@ __docformat__ = 'restructuredtext en'
 Provides abstraction for metadata reading.writing from a variety of ebook formats.
 """
 import os, sys, re
+from contextlib import suppress
 
 from calibre import relpath, guess_type, prints, force_unicode
 from calibre.utils.config_base import tweaks
-from polyglot.builtins import codepoint_to_chr, unicode_type, range, map, zip, getcwd, iteritems, itervalues, as_unicode
+from polyglot.builtins import codepoint_to_chr, unicode_type, range, map, zip, getcwd, iteritems, as_unicode
 from polyglot.urllib import quote, unquote, urlparse
 
 
@@ -46,69 +47,86 @@ def remove_bracketed_text(src, brackets=None):
         brackets = {'(': ')', '[': ']', '{': '}'}
     from collections import Counter
     counts = Counter()
+    total = 0
     buf = []
     src = force_unicode(src)
     rmap = {v: k for k, v in iteritems(brackets)}
     for char in src:
         if char in brackets:
             counts[char] += 1
+            total += 1
         elif char in rmap:
             idx = rmap[char]
             if counts[idx] > 0:
                 counts[idx] -= 1
-        elif sum(itervalues(counts)) < 1:
+                total -= 1
+        elif total < 1:
             buf.append(char)
     return ''.join(buf)
 
 
-def author_to_author_sort(author, method=None):
+def author_to_author_sort(
+        author,
+        method=None,
+        copywords=None,
+        use_surname_prefixes=None,
+        surname_prefixes=None,
+        name_prefixes=None,
+        name_suffixes=None
+):
     if not author:
         return ''
-    sauthor = remove_bracketed_text(author).strip()
-    tokens = sauthor.split()
-    if len(tokens) < 2:
-        return author
+
     if method is None:
         method = tweaks['author_sort_copy_method']
-
-    ltoks = frozenset(x.lower() for x in tokens)
-    copy_words = frozenset(x.lower() for x in tweaks['author_name_copywords'])
-    if ltoks.intersection(copy_words):
-        method = 'copy'
-
     if method == 'copy':
         return author
 
-    prefixes = {force_unicode(y).lower() for y in tweaks['author_name_prefixes']}
-    prefixes |= {y+'.' for y in prefixes}
-    while True:
-        if not tokens:
-            return author
-        tok = tokens[0].lower()
-        if tok in prefixes:
-            tokens = tokens[1:]
-        else:
-            break
-
-    suffixes = {force_unicode(y).lower() for y in tweaks['author_name_suffixes']}
-    suffixes |= {y+'.' for y in suffixes}
-
-    suffix = ''
-    while True:
-        if not tokens:
-            return author
-        last = tokens[-1].lower()
-        if last in suffixes:
-            suffix = tokens[-1] + ' ' + suffix
-            tokens = tokens[:-1]
-        else:
-            break
-    suffix = suffix.strip()
-
-    if method == 'comma' and ',' in ''.join(tokens):
+    sauthor = remove_bracketed_text(author).strip()
+    if method == 'comma' and ',' in sauthor:
         return author
 
-    atokens = tokens[-1:] + tokens[:-1]
+    tokens = sauthor.split()
+    if len(tokens) < 2:
+        return author
+
+    ltoks = frozenset(x.lower() for x in tokens)
+    copy_words = frozenset(x.lower() for x in (tweaks['author_name_copywords'] if copywords is None else copywords))
+    if ltoks.intersection(copy_words):
+        return author
+
+    author_use_surname_prefixes = tweaks['author_use_surname_prefixes'] if use_surname_prefixes is None else use_surname_prefixes
+    if author_use_surname_prefixes:
+        author_surname_prefixes = frozenset(x.lower() for x in (tweaks['author_surname_prefixes'] if surname_prefixes is None else surname_prefixes))
+        if len(tokens) == 2 and tokens[0].lower() in author_surname_prefixes:
+            return author
+
+    prefixes = {force_unicode(y).lower() for y in (tweaks['author_name_prefixes'] if name_prefixes is None else name_prefixes)}
+    prefixes |= {y+'.' for y in prefixes}
+
+    for first in range(len(tokens)):
+        if tokens[first].lower() not in prefixes:
+            break
+    else:
+        return author
+
+    suffixes = {force_unicode(y).lower() for y in (tweaks['author_name_suffixes'] if name_suffixes is None else name_suffixes)}
+    suffixes |= {y+'.' for y in suffixes}
+
+    for last in range(len(tokens) - 1, first - 1, -1):
+        if tokens[last].lower() not in suffixes:
+            break
+    else:
+        return author
+
+    suffix = ' '.join(tokens[last + 1:])
+
+    if author_use_surname_prefixes:
+        if last > first and tokens[last - 1].lower() in author_surname_prefixes:
+            tokens[last - 1] += ' ' + tokens[last]
+            last -= 1
+
+    atokens = tokens[last:last + 1] + tokens[first:last]
     num_toks = len(atokens)
     if suffix:
         atokens.append(suffix)
@@ -203,7 +221,7 @@ def fmt_sidx(i, fmt='%.2f', use_roman=False):
         i = 1
     try:
         i = float(i)
-    except TypeError:
+    except Exception:
         return unicode_type(i)
     if int(i) == float(i):
         return roman(int(i)) if use_roman else '%d'%int(i)
@@ -357,44 +375,60 @@ def MetaInformation(title, authors=(_('Unknown'),)):
     return Metadata(title, authors, other=mi)
 
 
+def check_digit_for_isbn10(isbn):
+    check = sum((i+1)*int(isbn[i]) for i in range(9)) % 11
+    return 'X' if check == 10 else str(check)
+
+
+def check_digit_for_isbn13(isbn):
+    check = 10 - sum((1 if i%2 ==0 else 3)*int(isbn[i]) for i in range(12)) % 10
+    if check == 10:
+        check = 0
+    return str(check)
+
+
 def check_isbn10(isbn):
-    try:
-        digits = tuple(map(int, isbn[:9]))
-        products = [(i+1)*digits[i] for i in range(9)]
-        check = sum(products)%11
-        if (check == 10 and isbn[9] == 'X') or check == int(isbn[9]):
-            return isbn
-    except Exception:
-        pass
-    return None
+    with suppress(Exception):
+        return check_digit_for_isbn10(isbn) == isbn[9]
+    return False
 
 
 def check_isbn13(isbn):
-    try:
-        digits = tuple(map(int, isbn[:12]))
-        products = [(1 if i%2 ==0 else 3)*digits[i] for i in range(12)]
-        check = 10 - (sum(products)%10)
-        if check == 10:
-            check = 0
-        if unicode_type(check) == isbn[12]:
-            return isbn
-    except Exception:
-        pass
-    return None
+    with suppress(Exception):
+        return check_digit_for_isbn13(isbn) == isbn[12]
+    return False
 
 
-def check_isbn(isbn):
+def check_isbn(isbn, simple_sanitize=False):
     if not isbn:
         return None
-    isbn = re.sub(r'[^0-9X]', '', isbn.upper())
+    if simple_sanitize:
+        isbn = isbn.upper().replace('-', '').strip().replace(' ', '')
+    else:
+        isbn = re.sub(r'[^0-9X]', '', isbn.upper())
+    il = len(isbn)
+    if il not in (10, 13):
+        return None
     all_same = re.match(r'(\d)\1{9,12}$', isbn)
     if all_same is not None:
         return None
-    if len(isbn) == 10:
-        return check_isbn10(isbn)
-    if len(isbn) == 13:
-        return check_isbn13(isbn)
+    if il == 10:
+        return isbn if check_isbn10(isbn) else None
+    if il == 13:
+        return isbn if check_isbn13(isbn) else None
     return None
+
+
+def normalize_isbn(isbn):
+    if not isbn:
+        return isbn
+    ans = check_isbn(isbn)
+    if ans is None:
+        return isbn
+    if len(ans) == 10:
+        ans = '978' + ans[:9]
+        ans += check_digit_for_isbn13(ans)
+    return ans
 
 
 def check_issn(issn):

@@ -8,7 +8,7 @@ __docformat__ = 'restructuredtext en'
 
 import time
 
-from PyQt5.Qt import QTimer, QDialog, QDialogButtonBox, QCheckBox, QVBoxLayout, QLabel, Qt
+from qt.core import QTimer, QDialog, QDialogButtonBox, QCheckBox, QVBoxLayout, QLabel, Qt
 
 from calibre.gui2 import error_dialog, question_dialog
 from calibre.gui2.actions import InterfaceAction
@@ -36,7 +36,7 @@ class Choose(QDialog):
         bb.rejected.connect(self.reject)
         self.buts = buts = []
         for fmt in fmts:
-            b = bb.addButton(fmt.upper(), bb.AcceptRole)
+            b = bb.addButton(fmt.upper(), QDialogButtonBox.ButtonRole.AcceptRole)
             b.setObjectName(fmt)
             connect_lambda(b.clicked, self, lambda self: self.chosen(self.sender().objectName()))
             buts.append(b)
@@ -127,7 +127,7 @@ class TweakEpubAction(InterfaceAction):
         if len(tweakable_fmts) > 1:
             if tprefs['choose_tweak_fmt']:
                 d = Choose(sorted(tweakable_fmts, key=tprefs.defaults['tweak_fmt_order'].index), self.gui)
-                if d.exec_() != d.Accepted:
+                if d.exec_() != QDialog.DialogCode.Accepted:
                     return
                 tweakable_fmts = {d.fmt}
             else:
@@ -154,7 +154,7 @@ class TweakEpubAction(InterfaceAction):
                 ' library maintenance.') % fmt, show=True)
         tweak = 'ebook-edit'
         try:
-            self.gui.setCursor(Qt.BusyCursor)
+            self.gui.setCursor(Qt.CursorShape.BusyCursor)
             if tprefs['update_metadata_from_calibre']:
                 db.new_api.embed_metadata((book_id,), only_fmts={fmt})
             notify = '%d:%s:%s:%s' % (book_id, fmt, db.library_id, db.library_path)

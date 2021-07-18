@@ -10,7 +10,7 @@ import os, tempfile, shutil, time
 from threading import Thread, Event
 from polyglot.builtins import map
 
-from PyQt5.Qt import (QFileSystemWatcher, QObject, Qt, pyqtSignal, QTimer, QApplication, QCursor)
+from qt.core import (QFileSystemWatcher, QObject, Qt, pyqtSignal, QTimer, QApplication, QCursor)
 
 from calibre import prints
 from calibre.db.adding import filter_filename, compile_rule
@@ -167,12 +167,12 @@ class AutoAdder(QObject):
             self.watcher = QFileSystemWatcher(self)
             self.worker = Worker(path, self.metadata_read.emit)
             self.watcher.directoryChanged.connect(self.dir_changed,
-                    type=Qt.QueuedConnection)
+                    type=Qt.ConnectionType.QueuedConnection)
             self.metadata_read.connect(self.add_to_db,
-                    type=Qt.QueuedConnection)
+                    type=Qt.ConnectionType.QueuedConnection)
             QTimer.singleShot(2000, self.initialize)
             self.auto_convert.connect(self.do_auto_convert,
-                    type=Qt.QueuedConnection)
+                    type=Qt.ConnectionType.QueuedConnection)
         elif path:
             prints(path,
                 'is not a valid directory to watch for new ebooks, ignoring')
@@ -206,7 +206,7 @@ class AutoAdder(QObject):
             self.worker.join()
 
     def __enter__(self):
-        QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+        QApplication.setOverrideCursor(QCursor(Qt.CursorShape.WaitCursor))
 
     def __exit__(self, *args):
         QApplication.restoreOverrideCursor()

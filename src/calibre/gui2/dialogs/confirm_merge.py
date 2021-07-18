@@ -5,8 +5,8 @@
 __license__ = 'GPL v3'
 __copyright__ = '2015, Kovid Goyal <kovid at kovidgoyal.net>'
 
-from PyQt5.Qt import (
-    QVBoxLayout, QSplitter, QWidget, QLabel, QCheckBox, QTextBrowser, Qt,
+from qt.core import (
+    QVBoxLayout, QSplitter, QWidget, QLabel, QCheckBox, QTextBrowser, Qt, QDialog, QDialogButtonBox
 )
 
 from calibre.ebooks.metadata import authors_to_string
@@ -51,13 +51,16 @@ class ConfirmMerge(Dialog):
     def __init__(self, msg, name, parent, mi):
         self.msg, self.mi, self.conf_name = msg, mi, name
         Dialog.__init__(self, _('Are you sure?'), 'confirm-merge-dialog', parent)
+        needed, sz = self.sizeHint(), self.size()
+        if needed.width() > sz.width() or needed.height() > sz.height():
+            self.resize(needed)
 
     def setup_ui(self):
         self.l = l = QVBoxLayout(self)
         self.splitter = s = QSplitter(self)
         s.setChildrenCollapsible(False)
         l.addWidget(s), l.addWidget(self.bb)
-        self.bb.setStandardButtons(self.bb.Yes | self.bb.No)
+        self.bb.setStandardButtons(QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No)
 
         self.left = w = QWidget(self)
         s.addWidget(w)
@@ -88,7 +91,7 @@ def confirm_merge(msg, name, parent, mi):
     if not config_set.get(confirm_config_name(name), True):
         return True
     d = ConfirmMerge(msg, name, parent, mi)
-    return d.exec_() == d.Accepted
+    return d.exec_() == QDialog.DialogCode.Accepted
 
 
 class ChooseMerge(Dialog):
@@ -103,7 +106,7 @@ class ChooseMerge(Dialog):
         self.splitter = s = QSplitter(self)
         s.setChildrenCollapsible(False)
         l.addWidget(s), l.addWidget(self.bb)
-        self.bb.setStandardButtons(self.bb.Yes | self.bb.No)
+        self.bb.setStandardButtons(QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No)
         self.left = w = QWidget(self)
         s.addWidget(w)
         w.l = l = QVBoxLayout(w)
@@ -114,7 +117,7 @@ class ChooseMerge(Dialog):
             l.addWidget(ans)
             prefs_key = ans.prefs_key = 'choose-merge-cb-' + name
             ans.setChecked(gprefs.get(prefs_key, True))
-            connect_lambda(ans.stateChanged, self, lambda self, state: self.state_changed(getattr(self, name), state), type=Qt.QueuedConnection)
+            connect_lambda(ans.stateChanged, self, lambda self, state: self.state_changed(getattr(self, name), state), type=Qt.ConnectionType.QueuedConnection)
             if tt:
                 ans.setToolTip(tt)
             setattr(self, name, ans)
@@ -186,6 +189,6 @@ class ChooseMerge(Dialog):
 
 def merge_drop(dest_id, src_ids, gui):
     d = ChooseMerge(dest_id, src_ids, gui)
-    if d.exec_() != d.Accepted:
+    if d.exec_() != QDialog.DialogCode.Accepted:
         return None, None, None
     return d.merge_type

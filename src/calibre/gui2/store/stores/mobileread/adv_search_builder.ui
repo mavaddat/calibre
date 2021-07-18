@@ -14,7 +14,7 @@
    <string>Advanced search</string>
   </property>
   <property name="windowIcon">
-   <iconset>
+   <iconset resource="../../../../../../resources/images.qrc">
     <normaloff>:/images/search.png</normaloff>:/images/search.png</iconset>
   </property>
   <layout class="QGridLayout" name="gridLayout_2">
@@ -47,7 +47,7 @@
      </item>
     </widget>
    </item>
-   <item row="2" column="0" colspan="2">
+   <item row="1" column="0" rowspan="2" colspan="2">
     <widget class="QTabWidget" name="tabWidget">
      <property name="currentIndex">
       <number>0</number>
@@ -56,8 +56,8 @@
       <attribute name="title">
        <string>A&amp;dvanced search</string>
       </attribute>
-      <layout class="QGridLayout" name="gridLayout_3">
-       <item row="0" column="0">
+      <layout class="QVBoxLayout" name="verticalLayout_3">
+       <item>
         <widget class="QGroupBox" name="groupBox">
          <property name="title">
           <string>Find entries that have...</string>
@@ -76,7 +76,11 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="all"/>
+             <widget class="QLineEdit" name="all">
+              <property name="clearButtonEnabled">
+               <bool>true</bool>
+              </property>
+             </widget>
             </item>
            </layout>
           </item>
@@ -93,7 +97,11 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="phrase"/>
+             <widget class="QLineEdit" name="phrase">
+              <property name="clearButtonEnabled">
+               <bool>true</bool>
+              </property>
+             </widget>
             </item>
            </layout>
           </item>
@@ -110,17 +118,21 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="any"/>
+             <widget class="QLineEdit" name="any">
+              <property name="clearButtonEnabled">
+               <bool>true</bool>
+              </property>
+             </widget>
             </item>
            </layout>
           </item>
          </layout>
         </widget>
        </item>
-       <item row="1" column="0">
+       <item>
         <widget class="QGroupBox" name="groupBox_2">
          <property name="title">
-          <string>But don&apos;t show entries that have...</string>
+          <string>But don't show entries that have...</string>
          </property>
          <layout class="QVBoxLayout" name="verticalLayout_2">
           <item>
@@ -136,7 +148,11 @@
              </widget>
             </item>
             <item>
-             <widget class="QLineEdit" name="none"/>
+             <widget class="QLineEdit" name="none">
+              <property name="clearButtonEnabled">
+               <bool>true</bool>
+              </property>
+             </widget>
             </item>
            </layout>
           </item>
@@ -149,7 +165,7 @@
              </size>
             </property>
             <property name="text">
-                <string>See the &lt;a href=&quot;https://manual.calibre-ebook.com/gui.html#the-search-interface&quot;&gt;User Manual&lt;/a&gt; for more help</string>
+             <string>See the &lt;a href=&quot;https://manual.calibre-ebook.com/gui.html#the-search-interface&quot;&gt;User Manual&lt;/a&gt; for more help</string>
             </property>
             <property name="openExternalLinks">
              <bool>true</bool>
@@ -159,7 +175,7 @@
          </layout>
         </widget>
        </item>
-       <item row="2" column="0">
+       <item>
         <spacer name="verticalSpacer_2">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
@@ -172,15 +188,39 @@
          </property>
         </spacer>
        </item>
-       <item row="3" column="0">
-        <widget class="QDialogButtonBox" name="buttonBox">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="standardButtons">
-          <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-         </property>
-        </widget>
+       <item>
+        <layout class="QHBoxLayout" name="horizontalLayout_5">
+         <item>
+          <widget class="QPushButton" name="advanced_clear_button">
+           <property name="text">
+            <string>&amp;Clear</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QDialogButtonBox" name="buttonBox">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="standardButtons">
+            <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+           </property>
+          </widget>
+         </item>
+        </layout>
        </item>
       </layout>
      </widget>
@@ -203,6 +243,9 @@
         <widget class="EnLineEdit" name="title_box">
          <property name="toolTip">
           <string>Enter the title.</string>
+         </property>
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
          </property>
         </widget>
        </item>
@@ -255,10 +298,18 @@
         </widget>
        </item>
        <item row="2" column="1">
-        <widget class="EnLineEdit" name="author_box"/>
+        <widget class="EnLineEdit" name="author_box">
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
        </item>
        <item row="3" column="1">
-        <widget class="QLineEdit" name="format_box"/>
+        <widget class="QLineEdit" name="format_box">
+         <property name="clearButtonEnabled">
+          <bool>true</bool>
+         </property>
+        </widget>
        </item>
        <item row="3" column="0">
         <widget class="QLabel" name="label_10">
@@ -273,19 +324,6 @@
       </layout>
      </widget>
     </widget>
-   </item>
-   <item row="1" column="1">
-    <spacer name="verticalSpacer_3">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
    </item>
   </layout>
  </widget>
@@ -311,7 +349,7 @@
   <tabstop>matchkind</tabstop>
  </tabstops>
  <resources>
-  <include location="../../../../resources/images.qrc"/>
+  <include location="../../../../../../resources/images.qrc"/>
  </resources>
  <connections>
   <connection>
@@ -321,8 +359,8 @@
    <slot>accept()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>248</x>
-     <y>254</y>
+     <x>259</x>
+     <y>451</y>
     </hint>
     <hint type="destinationlabel">
      <x>157</x>
@@ -337,8 +375,8 @@
    <slot>reject()</slot>
    <hints>
     <hint type="sourcelabel">
-     <x>316</x>
-     <y>260</y>
+     <x>327</x>
+     <y>451</y>
     </hint>
     <hint type="destinationlabel">
      <x>286</x>

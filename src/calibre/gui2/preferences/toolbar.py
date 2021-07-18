@@ -6,7 +6,7 @@ __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-from PyQt5.Qt import QAbstractListModel, Qt, QIcon
+from qt.core import QAbstractListModel, Qt, QIcon, QItemSelectionModel
 
 from calibre import force_unicode
 from calibre.gui2.preferences.toolbar_ui import Ui_Form
@@ -63,13 +63,13 @@ class BaseModel(QAbstractListModel):
     def data(self, index, role):
         row = index.row()
         action = self._data[row].action_spec
-        if role == Qt.DisplayRole:
+        if role == Qt.ItemDataRole.DisplayRole:
             text = action[0]
             text = text.replace('&', '')
             if text == _('%d books'):
                 text = _('Choose library')
             return (text)
-        if role == Qt.DecorationRole:
+        if role == Qt.ItemDataRole.DecorationRole:
             if hasattr(self._data[row], 'qaction'):
                 icon = self._data[row].qaction.icon()
                 if not icon.isNull():
@@ -78,7 +78,7 @@ class BaseModel(QAbstractListModel):
             if ic is None:
                 ic = 'blank.png'
             return (QIcon(I(ic)))
-        if role == Qt.ToolTipRole and action[2] is not None:
+        if role == Qt.ItemDataRole.ToolTipRole and action[2] is not None:
             return (action[2])
         return None
 
@@ -259,6 +259,8 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
             ]
 
     def genesis(self, gui):
+        self.all_actions.doubleClicked.connect(self.add_single_action)
+        self.current_actions.doubleClicked.connect(self.remove_single_action)
         self.models = {}
         self.what.addItem(_('Click to choose toolbar or menu to customize'),
                 'blank')
@@ -281,11 +283,11 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         self.current_actions.entered.connect(self.current_entered)
 
     def all_entered(self, index):
-        tt = self.all_actions.model().data(index, Qt.ToolTipRole) or ''
+        tt = self.all_actions.model().data(index, Qt.ItemDataRole.ToolTipRole) or ''
         self.help_text.setText(tt)
 
     def current_entered(self, index):
-        tt = self.current_actions.model().data(index, Qt.ToolTipRole) or ''
+        tt = self.current_actions.model().data(index, Qt.ItemDataRole.ToolTipRole) or ''
         self.help_text.setText(tt)
 
     def what_changed(self, idx):
@@ -300,13 +302,18 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
             self.current_actions.setModel(self.models[key][1])
 
     def add_action(self, *args):
-        x = self.all_actions.selectionModel().selectedIndexes()
-        names = self.all_actions.model().names(x)
+        self._add_action(self.all_actions.selectionModel().selectedIndexes())
+
+    def add_single_action(self, index):
+        self._add_action([index])
+
+    def _add_action(self, indices):
+        names = self.all_actions.model().names(indices)
         if names:
             not_added = self.current_actions.model().add(names)
             ns = {y.name for y in not_added}
             added = set(names) - ns
-            self.all_actions.model().remove(x, added)
+            self.all_actions.model().remove(indices, added)
             if not_added:
                 warning_dialog(self, _('Cannot add'),
                         _('Cannot add the actions %s to this location') %
@@ -319,10 +326,15 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
                 self.changed_signal.emit()
 
     def remove_action(self, *args):
-        x = self.current_actions.selectionModel().selectedIndexes()
-        names = self.current_actions.model().names(x)
+        self._remove_action(self.current_actions.selectionModel().selectedIndexes())
+
+    def remove_single_action(self, index):
+        self._remove_action([index])
+
+    def _remove_action(self, indices):
+        names = self.current_actions.model().names(indices)
         if names:
-            not_removed = self.current_actions.model().remove(x)
+            not_removed = self.current_actions.model().remove(indices)
             ns = {y.name for y in not_removed}
             removed = set(names) - ns
             self.all_actions.model().add(removed)
@@ -343,10 +355,10 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
             idx_map = m.move_many(x, delta)
             newci = idx_map.get(i)
             if newci is not None:
-                sm.setCurrentIndex(newci, sm.ClearAndSelect)
+                sm.setCurrentIndex(newci, QItemSelectionModel.SelectionFlag.ClearAndSelect)
             sm.clear()
             for idx in idx_map.values():
-                sm.select(idx, sm.Select)
+                sm.select(idx, QItemSelectionModel.SelectionFlag.Select)
             self.changed_signal.emit()
 
     def commit(self):

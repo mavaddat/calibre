@@ -3,7 +3,7 @@
 # License: GPLv3 Copyright: 2016, Kovid Goyal <kovid at kovidgoyal.net>
 
 
-import unittest, functools, importlib
+import unittest, functools, importlib, importlib.resources
 from calibre.utils.monotonic import monotonic
 
 
@@ -54,8 +54,7 @@ class TestResult(unittest.TextTestResult):
 
 
 def find_tests_in_package(package, excludes=('main.py',)):
-    loader = importlib.import_module(package).__spec__.loader
-    items = list(loader.contents())
+    items = list(importlib.resources.contents(package))
     suits = []
     excludes = set(excludes) | {x + 'c' for x in excludes}
     seen = set()
@@ -142,10 +141,10 @@ def run_tests(find_tests, verbosity=4):
     run_cli(tests, verbosity)
 
 
-def run_cli(suite, verbosity=4):
+def run_cli(suite, verbosity=4, buffer=True):
     r = unittest.TextTestRunner
     r.resultclass = unittest.TextTestResult if verbosity < 2 else TestResult
     init_env()
-    result = r(verbosity=verbosity).run(suite)
+    result = r(verbosity=verbosity, buffer=buffer).run(suite)
     if not result.wasSuccessful():
         raise SystemExit(1)

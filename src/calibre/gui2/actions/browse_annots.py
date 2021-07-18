@@ -4,7 +4,7 @@
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-from PyQt5.Qt import Qt
+from qt.core import Qt
 
 from calibre.gui2 import error_dialog
 from calibre.gui2.actions import InterfaceAction
@@ -28,8 +28,8 @@ class BrowseAnnotationsAction(InterfaceAction):
             from calibre.gui2.library.annotations import AnnotationsBrowser
             self.gui.library_view.selection_changed.connect(self.selection_changed)
             self._browser = AnnotationsBrowser(self.gui)
-            self._browser.show_book.connect(self.open_book, type=Qt.QueuedConnection)
-            self._browser.open_annotation.connect(self.open_annotation, type=Qt.QueuedConnection)
+            self._browser.show_book.connect(self.open_book, type=Qt.ConnectionType.QueuedConnection)
+            self._browser.open_annotation.connect(self.open_annotation, type=Qt.ConnectionType.QueuedConnection)
         return self._browser
 
     def show_browser(self):

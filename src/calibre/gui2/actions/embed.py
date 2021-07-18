@@ -7,7 +7,7 @@ __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
 from functools import partial
 
-from PyQt5.Qt import QTimer, QProgressDialog, Qt
+from qt.core import QTimer, QProgressDialog, Qt
 
 from calibre import force_unicode
 from calibre.gui2 import gprefs
@@ -80,7 +80,7 @@ class EmbedAction(InterfaceAction):
     def do_embed(self, book_ids, only_fmts=None):
         pd = QProgressDialog(_('Embedding updated metadata into book files...'), _('&Stop'), 0, len(book_ids), self.gui)
         pd.setWindowTitle(_('Embedding metadata...'))
-        pd.setWindowModality(Qt.WindowModal)
+        pd.setWindowModality(Qt.WindowModality.WindowModal)
         errors = []
         self.job_data = (0, tuple(book_ids), pd, only_fmts, errors)
         self.pd_timer.start()

@@ -12,9 +12,11 @@ import random
 import shutil
 import sys
 import traceback
-from collections import MutableSet, Set, defaultdict
+from collections import defaultdict
+from collections.abc import MutableSet, Set
 from functools import partial, wraps
 from io import BytesIO
+from threading import Lock
 from time import time
 
 from calibre import as_unicode, isbytestring
@@ -28,7 +30,9 @@ from calibre.db.categories import get_categories
 from calibre.db.errors import NoSuchBook, NoSuchFormat
 from calibre.db.fields import IDENTITY, InvalidLinkTable, create_field
 from calibre.db.lazy import FormatMetadata, FormatsList, ProxyMetadata
-from calibre.db.locking import DowngradeLockError, SafeReadLock, create_locks
+from calibre.db.locking import (
+    DowngradeLockError, LockingError, SafeReadLock, create_locks, try_lock
+)
 from calibre.db.search import Search
 from calibre.db.tables import VirtualTable
 from calibre.db.utils import type_safe_sort_key_function
@@ -141,6 +145,8 @@ class Cache(object):
         self.format_metadata_cache = defaultdict(dict)
         self.formatter_template_cache = {}
         self.dirtied_cache = {}
+        self.vls_for_books_cache = None
+        self.vls_cache_lock = Lock()
         self.dirtied_sequence = 0
         self.cover_caches = set()
         self.clear_search_cache_count = 0
@@ -169,6 +175,10 @@ class Cache(object):
     @property
     def library_id(self):
         return self.backend.library_id
+
+    @property
+    def dbpath(self):
+        return self.backend.dbpath
 
     @property
     def safe_read_lock(self):
@@ -245,6 +255,7 @@ class Cache(object):
     def clear_search_caches(self, book_ids=None):
         self.clear_search_cache_count += 1
         self._search_api.update_or_clear(self, book_ids)
+        self.vls_for_books_cache = None
 
     @read_api
     def last_modified(self):
@@ -358,7 +369,7 @@ class Cache(object):
 
         user_cat_vals = {}
         if get_user_categories:
-            user_cats = self.backend.prefs['user_categories']
+            user_cats = self._pref('user_categories', {})
             for ucat in user_cats:
                 res = []
                 for name,cat,ign in user_cats[ucat]:
@@ -603,7 +614,8 @@ class Cache(object):
         if not fmt:
             return {}
         fmt = fmt.upper()
-        if allow_cache:
+        # allow_cache and update_db are mutually exclusive. Give priority to update_db
+        if allow_cache and not update_db:
             x = self.format_metadata_cache[book_id].get(fmt, None)
             if x is not None:
                 return x
@@ -632,6 +644,11 @@ class Cache(object):
         return {fmt:field.format_fname(book_id, fmt) for fmt in fmts}
 
     @read_api
+    def format_db_size(self, book_id, fmt):
+        field = self.fields['formats']
+        return field.format_size(book_id, fmt)
+
+    @read_api
     def pref(self, name, default=None, namespace=None):
         ' Return the value for the specified preference or the value specified as ``default`` if the preference is not set. '
         if namespace is not None:
@@ -645,7 +662,7 @@ class Cache(object):
             self.backend.prefs.set_namespaced(namespace, name, val)
             return
         self.backend.prefs.set(name, val)
-        if name == 'grouped_search_terms':
+        if name in ('grouped_search_terms', 'virtual_libraries'):
             self._clear_search_caches()
         if name in dynamic_category_preferences:
             self._initialize_dynamic_categories()
@@ -660,8 +677,25 @@ class Cache(object):
         cover_as_data is True then as mi.cover_data.
         '''
 
+        # Check if virtual_libraries_for_books rebuilt its cache. If it did then
+        # we must clear the composite caches so the new data can be taken into
+        # account. Clearing the caches requires getting a write lock, so it must
+        # be done outside of the closure of _get_metadata().
+        composite_cache_needs_to_be_cleared = False
         with self.safe_read_lock:
+            vl_cache_was_none = self.vls_for_books_cache is None
             mi = self._get_metadata(book_id, get_user_categories=get_user_categories)
+            if vl_cache_was_none and self.vls_for_books_cache is not None:
+                composite_cache_needs_to_be_cleared = True
+        if composite_cache_needs_to_be_cleared:
+            try:
+                self.clear_composite_caches()
+            except LockingError:
+                # We can't clear the composite caches because a read lock is set.
+                # As a consequence the value of a composite column that calls
+                # virtual_libraries() might be wrong. Oh well. Log and keep running.
+                print("Couldn't get write lock after vls_for_books_cache was loaded", file=sys.stderr)
+                traceback.print_exc()
 
         if get_cover:
             if cover_as_data:
@@ -714,7 +748,7 @@ class Cache(object):
                 return
             ret = buf.getvalue()
             if as_image:
-                from PyQt5.Qt import QImage
+                from qt.core import QImage
                 i = QImage()
                 i.loadFromData(ret)
                 ret = i
@@ -752,6 +786,25 @@ class Cache(object):
 
         return self.backend.copy_cover_to(path, dest, use_hardlink=use_hardlink,
                                           report_file_size=report_file_size)
+
+    @write_api
+    def compress_covers(self, book_ids, jpeg_quality=100, progress_callback=None):
+        '''
+        Compress the cover images for the specified books. A compression quality of 100
+        will perform lossless compression, otherwise lossy compression.
+
+        The progress callback will be called with the book_id and the old and new sizes
+        for each book that has been processed. If an error occurs, the news size will
+        be a string with the error details.
+        '''
+        jpeg_quality = max(10, min(jpeg_quality, 100))
+        path_map = {}
+        for book_id in book_ids:
+            try:
+                path_map[book_id] = self._field_for('path', book_id).replace('/', os.sep)
+            except AttributeError:
+                continue
+        self.backend.compress_covers(path_map, jpeg_quality, progress_callback)
 
     @read_api
     def copy_format_to(self, book_id, fmt, dest, use_hardlink=False, report_file_size=None):
@@ -1055,17 +1108,18 @@ class Cache(object):
         return self._search_api(self, query, restriction, virtual_fields=virtual_fields, book_ids=book_ids)
 
     @read_api
-    def books_in_virtual_library(self, vl, search_restriction=None):
+    def books_in_virtual_library(self, vl, search_restriction=None, virtual_fields=None):
         ' Return the set of books in the specified virtual library '
         vl = self._pref('virtual_libraries', {}).get(vl) if vl else None
         if not vl and not search_restriction:
             return self.all_book_ids()
         # We utilize the search restriction cache to speed this up
+        srch = partial(self._search, virtual_fields=virtual_fields)
         if vl:
             if search_restriction:
-                return frozenset(self._search('', vl) & self._search('', search_restriction))
-            return frozenset(self._search('', vl))
-        return frozenset(self._search('', search_restriction))
+                return frozenset(srch('', vl) & srch('', search_restriction))
+            return frozenset(srch('', vl))
+        return frozenset(srch('', search_restriction))
 
     @read_api
     def number_of_books_in_virtual_library(self, vl=None, search_restriction=None):
@@ -1189,6 +1243,7 @@ class Cache(object):
             except IndexError:
                 author = _('Unknown')
             self.backend.update_path(book_id, title, author, self.fields['path'], self.fields['formats'])
+            self.format_metadata_cache.pop(book_id, None)
             if mark_as_dirtied:
                 self._mark_as_dirty(book_ids)
 
@@ -1219,7 +1274,8 @@ class Cache(object):
             except:
                 # This almost certainly means that the book has been deleted while
                 # the backup operation sat in the queue.
-                pass
+                import traceback
+                traceback.print_exc()
         return mi, sequence
 
     @write_api
@@ -1472,6 +1528,7 @@ class Cache(object):
         :param run_hooks: If True, file type plugins are run on the format before and after being added.
         :param dbapi: Internal use only.
         '''
+        needs_close = False
         if run_hooks:
             # Run import plugins, the write lock is not held to cater for
             # broken plugins that might spin the event loop by popping up a
@@ -1479,6 +1536,7 @@ class Cache(object):
             npath = run_import_plugins(stream_or_path, fmt)
             fmt = os.path.splitext(npath)[-1].lower().replace('.', '').upper()
             stream_or_path = lopen(npath, 'rb')
+            needs_close = True
             fmt = check_ebook_format(stream_or_path, fmt)
 
         with self.write_lock:
@@ -1494,8 +1552,17 @@ class Cache(object):
             if name and not replace:
                 return False
 
-            stream = stream_or_path if hasattr(stream_or_path, 'read') else lopen(stream_or_path, 'rb')
-            size, fname = self._do_add_format(book_id, fmt, stream, name)
+            if hasattr(stream_or_path, 'read'):
+                stream = stream_or_path
+            else:
+                stream = lopen(stream_or_path, 'rb')
+                needs_close = True
+            try:
+                stream = stream_or_path if hasattr(stream_or_path, 'read') else lopen(stream_or_path, 'rb')
+                size, fname = self._do_add_format(book_id, fmt, stream, name)
+            finally:
+                if needs_close:
+                    stream.close()
             del stream
 
             max_size = self.fields['formats'].table.update_fmt(book_id, fmt, fname, size, self.backend)
@@ -1906,6 +1973,14 @@ class Cache(object):
         self.clear_composite_caches()
 
     @read_api
+    def books_matching_device_book(self, lpath):
+        ans = set()
+        for book_id, (_, _, _, _, lpaths) in self.fields['ondevice'].cache.items():
+            if lpath in lpaths:
+                ans.add(book_id)
+        return ans
+
+    @read_api
     def tags_older_than(self, tag, delta=None, must_have_tag=None, must_have_authors=None):
         '''
         Return the ids of all books having the tag ``tag`` that are older than
@@ -2169,15 +2244,42 @@ class Cache(object):
             self._restore_annotations(book_id, annotations)
 
     @read_api
-    def virtual_libraries_for_books(self, book_ids):
-        libraries = self._pref('virtual_libraries', {})
-        ans = {book_id:[] for book_id in book_ids}
-        for lib, expr in iteritems(libraries):
-            books = self._search(expr)  # We deliberately dont use book_ids as we want to use the search cache
-            for book in book_ids:
-                if book in books:
-                    ans[book].append(lib)
-        return {k:tuple(sorted(v, key=sort_key)) for k, v in iteritems(ans)}
+    def virtual_libraries_for_books(self, book_ids, virtual_fields=None):
+        # use a primitive lock to ensure that only one thread is updating
+        # the cache and that recursive calls don't do the update. This
+        # method can recurse via self._search()
+        with try_lock(self.vls_cache_lock) as got_lock:
+            # Using a list is slightly faster than a set.
+            c = defaultdict(list)
+            if not got_lock:
+                # We get here if resolving the books in a VL triggers another VL
+                # calculation. This can be 'real' recursion, in which case the
+                # eventual answer will be wrong. It can also be a  search using
+                # a location of 'all' that causes evaluation of a composite that
+                # references virtual_libraries(). If the composite isn't used in a
+                # VL then the eventual answer will be correct because get_metadata
+                # will clear the caches.
+                return c
+            if self.vls_for_books_cache is None:
+                self.vls_for_books_cache_is_loading = True
+                libraries = self._pref('virtual_libraries', {})
+                for lib, expr in libraries.items():
+                    book = None
+                    try:
+                        for book in self._search(expr, virtual_fields=virtual_fields):
+                            c[book].append(lib)
+                    except Exception as e:
+                        if book:
+                            c[book].append(_('[Error in Virtual library {0}: {1}]').format(lib, str(e)))
+                self.vls_for_books_cache = {b:tuple(sorted(libs, key=sort_key)) for b, libs in c.items()}
+        if not book_ids:
+            book_ids = self._all_book_ids()
+        # book_ids is usually 1 long. The loop will be faster than a comprehension
+        r = {}
+        default = ()
+        for b in book_ids:
+            r[b] = self.vls_for_books_cache.get(b, default)
+        return r
 
     @read_api
     def user_categories_for_books(self, book_ids, proxy_metadata_map=None):
@@ -2187,7 +2289,7 @@ class Cache(object):
         It should be a mapping of book_ids to their corresponding ProxyMetadata
         objects.
         '''
-        user_cats = self.backend.prefs['user_categories']
+        user_cats = self._pref('user_categories', {})
         pmm = proxy_metadata_map or {}
         ans = {}
 
@@ -2401,6 +2503,10 @@ class Cache(object):
                 ts = (parse_iso8601(annot['timestamp']) - EPOCH).total_seconds()
                 alist.append((annot, ts))
         self._set_annotations_for_book(book_id, fmt, alist, user_type=user_type, user=user)
+
+    @write_api
+    def reindex_annotations(self):
+        self.backend.reindex_annotations()
 
 
 def import_library(library_key, importer, library_path, progress=None, abort=None):

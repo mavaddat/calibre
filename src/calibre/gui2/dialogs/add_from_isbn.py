@@ -7,16 +7,15 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 import os
-
-from PyQt5.Qt import (
-    QDialog, QApplication, QIcon, QVBoxLayout, QHBoxLayout, QDialogButtonBox,
-    QPlainTextEdit, QPushButton, QLabel, QLineEdit, Qt
+from qt.core import (
+    QApplication, QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QIcon, QLabel,
+    QLineEdit, QPlainTextEdit, QPushButton, Qt, QVBoxLayout
 )
 
-from calibre.ebooks.metadata import check_isbn
 from calibre.constants import iswindows
-from calibre.gui2 import gprefs, question_dialog, error_dialog
-from polyglot.builtins import unicode_type, filter
+from calibre.ebooks.metadata import check_isbn
+from calibre.gui2 import error_dialog, gprefs, question_dialog
+from polyglot.builtins import filter, unicode_type
 
 
 class AddFromISBN(QDialog):
@@ -40,13 +39,13 @@ class AddFromISBN(QDialog):
         self.l = l = QVBoxLayout(self)
         self.h = h = QHBoxLayout()
         l.addLayout(h)
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel, self)
-        bb.button(bb.Ok).setText(_('&OK'))
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel, self)
+        bb.button(QDialogButtonBox.StandardButton.Ok).setText(_('&OK'))
         l.addWidget(bb), bb.accepted.connect(self.accept), bb.rejected.connect(self.reject)
         self.ll = l = QVBoxLayout()
         h.addLayout(l)
         self.isbn_box = i = QPlainTextEdit(self)
-        i.setFocus(Qt.OtherFocusReason)
+        i.setFocus(Qt.FocusReason.OtherFocusReason)
         l.addWidget(i)
         self.paste_button = b = QPushButton(_("&Paste from clipboard"), self)
         l.addWidget(b), b.clicked.connect(self.paste)
@@ -57,8 +56,8 @@ class AddFromISBN(QDialog):
             " create entries for books based on the ISBN and download metadata and covers for them.</p>\n"
             "<p>Any invalid ISBNs in the list will be ignored.</p>\n"
             "<p>You can also specify a file that will be added with each ISBN. To do this enter the full"
-            " path to the file after a <code>>></code>.  For example:</p>\n"
-            "<p><code>9788842915232 >> %s</code></p>"), self)
+            " path to the file after a <code>&gt;&gt;</code>. For example:</p>\n"
+            "<p><code>9788842915232 &gt;&gt; %s</code></p>"), self)
         l.addWidget(la), la.setWordWrap(True)
         l.addSpacing(20)
         self.la2 = la = QLabel(_("&Tags to set on created book entries:"), self)
@@ -67,6 +66,10 @@ class AddFromISBN(QDialog):
         le.setText(', '.join(gprefs.get('add from ISBN tags', [])))
         la.setBuddy(le)
         l.addWidget(le)
+        self._check_for_existing = ce = QCheckBox(_('Check for books with the same ISBN already in library'), self)
+        ce.setChecked(gprefs.get('add from ISBN dup check', False))
+        l.addWidget(ce)
+
         l.addStretch(10)
 
     def paste(self, *args):
@@ -78,10 +81,15 @@ class AddFromISBN(QDialog):
             new = old + '\n' + txt
             self.isbn_box.setPlainText(new)
 
+    @property
+    def check_for_existing(self):
+        return self._check_for_existing.isChecked()
+
     def accept(self, *args):
         tags = unicode_type(self.add_tags.text()).strip().split(',')
         tags = list(filter(None, [x.strip() for x in tags]))
         gprefs['add from ISBN tags'] = tags
+        gprefs['add from ISBN dup check'] = self.check_for_existing
         self.set_tags = tags
         bad = set()
         for line in unicode_type(self.isbn_box.toPlainText()).strip().splitlines():
@@ -110,7 +118,7 @@ class AddFromISBN(QDialog):
             if self.books:
                 if not question_dialog(self, _('Some invalid ISBNs'),
                     _('Some of the ISBNs you entered were invalid. They will'
-                        ' be ignored. Click Show Details to see which ones.'
+                        ' be ignored. Click "Show details" to see which ones.'
                         ' Do you want to proceed?'), det_msg='\n'.join(bad),
                     show_copy_button=True):
                     return

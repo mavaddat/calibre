@@ -3,34 +3,36 @@
 # License: GPLv3 Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>
 
 
-import regex, numbers
+import numbers
+import regex
 from collections import defaultdict, namedtuple
 from io import BytesIO
+from qt.core import (
+    QApplication, QComboBox, QCompleter, QCoreApplication, QDateTime, QDialog,
+    QDialogButtonBox, QFont, QGridLayout, QInputDialog, QLabel, QLineEdit,
+    QProgressBar, QSize, Qt, QVBoxLayout, pyqtSignal
+)
 from threading import Thread
 
-from PyQt5.Qt import (
-    QCompleter, QCoreApplication, QDateTime, QDialog, QDialogButtonBox, QFont, QProgressBar,
-    QGridLayout, QInputDialog, QLabel, QLineEdit, QSize, Qt, QVBoxLayout, pyqtSignal, QApplication
-)
-
-from calibre import prints
+from calibre import human_readable, prints
 from calibre.constants import DEBUG
 from calibre.db import _get_next_series_num_for_list
 from calibre.ebooks.metadata import authors_to_string, string_to_authors, title_sort
 from calibre.ebooks.metadata.book.formatter import SafeFormat
 from calibre.ebooks.metadata.opf2 import OPF
 from calibre.gui2 import (
-    UNDEFINED_QDATETIME, FunctionDispatcher, error_dialog, gprefs, question_dialog
+    UNDEFINED_QDATETIME, FunctionDispatcher, error_dialog, gprefs, info_dialog,
+    question_dialog
 )
 from calibre.gui2.custom_column_widgets import populate_metadata_page
 from calibre.gui2.dialogs.metadata_bulk_ui import Ui_MetadataBulkDialog
 from calibre.gui2.dialogs.tag_editor import TagEditor
 from calibre.gui2.dialogs.template_line_editor import TemplateLineEditor
+from calibre.gui2.widgets import LineEditECM
 from calibre.utils.config import JSONConfig, dynamic, prefs, tweaks
-from calibre.utils.date import qt_to_dt, internal_iso_format_string
+from calibre.utils.date import internal_iso_format_string, qt_to_dt
 from calibre.utils.icu import capitalize, sort_key
 from calibre.utils.titlecase import titlecase
-from calibre.gui2.widgets import LineEditECM
 from polyglot.builtins import (
     error_message, filter, iteritems, itervalues, native_string_type, unicode_type
 )
@@ -39,7 +41,7 @@ Settings = namedtuple('Settings',
     'remove_all remove add au aus do_aus rating pub do_series do_autonumber '
     'do_swap_ta do_remove_conv do_auto_author series do_series_restart series_start_value series_increment '
     'do_title_case cover_action clear_series clear_pub pubdate adddate do_title_sort languages clear_languages '
-    'restore_original comments generate_cover_settings read_file_metadata casing_algorithm')
+    'restore_original comments generate_cover_settings read_file_metadata casing_algorithm do_compress_cover compress_cover_quality')
 
 null = object()
 
@@ -68,6 +70,7 @@ class MyBlockingBusy(QDialog):  # {{{
 
         self._layout =  l = QVBoxLayout()
         self.setLayout(l)
+        self.cover_sizes = {'old': 0, 'new': 0}
         # Every Path that will be taken in do_all
         options = [
             args.cover_action == 'fromfmt' or args.read_file_metadata,
@@ -82,7 +85,7 @@ class MyBlockingBusy(QDialog):  # {{{
             is not None, args.do_series, bool(args.series) and
             args.do_autonumber, args.comments is not null,
             args.do_remove_conv, args.clear_languages, args.remove_all,
-            bool(do_sr)
+            bool(do_sr), args.do_compress_cover
         ]
         self.selected_options = sum(options)
         if DEBUG:
@@ -108,15 +111,15 @@ class MyBlockingBusy(QDialog):  # {{{
         self.current_step_value = 0
         self._layout.addWidget(self.current_step_pb)
         self._layout.addSpacing(15)
-        self._layout.addWidget(self.msg, 0, Qt.AlignHCenter)
+        self._layout.addWidget(self.msg, 0, Qt.AlignmentFlag.AlignHCenter)
         self.setWindowTitle(window_title + '...')
         self.setMinimumWidth(200)
         self.resize(self.sizeHint())
         self.error = None
-        self.all_done.connect(self.on_all_done, type=Qt.QueuedConnection)
-        self.progress_update.connect(self.on_progress_update, type=Qt.QueuedConnection)
-        self.progress_finished_cur_step.connect(self.on_progress_finished_cur_step, type=Qt.QueuedConnection)
-        self.progress_next_step_range.connect(self.on_progress_next_step_range, type=Qt.QueuedConnection)
+        self.all_done.connect(self.on_all_done, type=Qt.ConnectionType.QueuedConnection)
+        self.progress_update.connect(self.on_progress_update, type=Qt.ConnectionType.QueuedConnection)
+        self.progress_finished_cur_step.connect(self.on_progress_finished_cur_step, type=Qt.ConnectionType.QueuedConnection)
+        self.progress_next_step_range.connect(self.on_progress_next_step_range, type=Qt.ConnectionType.QueuedConnection)
         self.args, self.ids = args, ids
         self.db, self.cc_widgets = db, cc_widgets
         self.s_r_func = FunctionDispatcher(s_r_func)
@@ -312,7 +315,9 @@ class MyBlockingBusy(QDialog):  # {{{
 
         elif args.cover_action == 'trim':
             self.progress_next_step_range.emit(len(self.ids))
-            from calibre.utils.img import remove_borders_from_image, image_to_data, image_from_data
+            from calibre.utils.img import (
+                image_from_data, image_to_data, remove_borders_from_image
+            )
             for book_id in self.ids:
                 cdata = cache.cover(book_id)
                 if cdata:
@@ -437,10 +442,24 @@ class MyBlockingBusy(QDialog):  # {{{
             self.db.bulk_modify_tags(self.ids, add=args.add, remove=args.remove)
             self.progress_finished_cur_step.emit()
 
+        if args.do_compress_cover:
+            self.progress_next_step_range.emit(len(self.ids))
+
+            def pc(book_id, old_sz, new_sz):
+                if isinstance(new_sz, int):
+                    self.cover_sizes['old'] += old_sz
+                    self.cover_sizes['new'] += new_sz
+                self.progress_update.emit(1)
+
+            self.db.new_api.compress_covers(self.ids, args.compress_cover_quality, pc)
+            self.progress_finished_cur_step.emit()
+
         if self.do_sr:
             self.progress_next_step_range.emit(len(self.ids))
             for book_id in self.ids:
-                self.s_r_func(book_id)
+                ans = self.s_r_func(book_id)
+                if isinstance(ans, bool) and not ans:
+                    break
                 self.progress_update.emit(1)
             if self.sr_calls:
                 self.progress_next_step_range.emit(len(self.sr_calls))
@@ -493,7 +512,9 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
 
         all_tags = self.db.new_api.all_field_names('tags')
         self.tags.update_items_cache(all_tags)
+        self.tags.set_elide_mode(Qt.TextElideMode.ElideMiddle)
         self.remove_tags.update_items_cache(all_tags)
+        self.remove_tags.set_elide_mode(Qt.TextElideMode.ElideMiddle)
 
         self.initialize_combos()
 
@@ -539,7 +560,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.prepare_search_and_replace()
 
         self.button_box.clicked.connect(self.button_clicked)
-        self.button_box.button(QDialogButtonBox.Apply).setToolTip(_(
+        self.button_box.button(QDialogButtonBox.StandardButton.Apply).setToolTip(_(
             'Immediately make all changes without closing the dialog. '
             'This operation cannot be canceled or undone'))
         self.do_again = False
@@ -553,7 +574,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.central_widget.setCurrentIndex(ct)
         self.languages.init_langs(self.db)
         self.languages.setEditText('')
-        self.authors.setFocus(Qt.OtherFocusReason)
+        self.authors.setFocus(Qt.FocusReason.OtherFocusReason)
         self.generate_cover_settings = None
         self.button_config_cover_gen.clicked.connect(self.customize_cover_generation)
         self.exec_()
@@ -567,13 +588,13 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
     def customize_cover_generation(self):
         from calibre.gui2.covers import CoverSettingsDialog
         d = CoverSettingsDialog(parent=self)
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             self.generate_cover_settings = d.prefs_for_rendering
 
     def set_comments(self):
         from calibre.gui2.dialogs.comments_dialog import CommentsDialog
         d = CommentsDialog(self, '' if self.comments is null else (self.comments or ''), _('Comments'))
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             self.comments = d.textbox.html
             b = self.comments_button
             b.setStyleSheet('QPushButton { font-weight: bold }')
@@ -601,7 +622,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.adddate.setDateTime(UNDEFINED_QDATETIME)
 
     def button_clicked(self, which):
-        if which == self.button_box.button(QDialogButtonBox.Apply):
+        if which == self.button_box.button(QDialogButtonBox.StandardButton.Apply):
             self.do_again = True
             self.accept()
 
@@ -721,9 +742,9 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.s_r_template.lost_focus.connect(self.s_r_template_changed)
         self.central_widget.setCurrentIndex(0)
 
-        self.search_for.completer().setCaseSensitivity(Qt.CaseSensitive)
-        self.replace_with.completer().setCaseSensitivity(Qt.CaseSensitive)
-        self.s_r_template.completer().setCaseSensitivity(Qt.CaseSensitive)
+        self.search_for.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseSensitive)
+        self.replace_with.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseSensitive)
+        self.s_r_template.completer().setCaseSensitivity(Qt.CaseSensitivity.CaseSensitive)
 
         self.s_r_search_mode_changed(self.search_mode.currentIndex())
         self.multiple_separator.setFixedWidth(30)
@@ -975,7 +996,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.s_r_set_colors()
         flags = regex.FULLCASE | regex.UNICODE
 
-        if self.case_sensitive.isChecked():
+        if not self.case_sensitive.isChecked():
             flags |= regex.IGNORECASE
 
         try:
@@ -996,8 +1017,11 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
             return
 
         try:
-            self.test_result.setText(self.s_r_obj.sub(self.s_r_func,
-                                     unicode_type(self.test_text.text())))
+            test_result = self.s_r_obj.sub(self.s_r_func, self.test_text.text())
+            if self.search_mode.currentIndex() == 0:
+                rfunc = self.s_r_functions[self.replace_func.currentText()]
+                test_result = rfunc(test_result)
+            self.test_result.setText(test_result)
         except Exception as e:
             self.s_r_error = e
             self.s_r_set_colors()
@@ -1044,11 +1068,18 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
                     val = ids
                 else:
                     try:
-                        val = dict([(t.split(':')) for t in val])
+                        val = dict([(t.split(':', maxsplit=1)) for t in val])
                     except:
-                        raise Exception(_('Invalid identifier string. It must be a '
-                                          'comma-separated list of pairs of '
-                                          'strings separated by a colon'))
+                        import traceback
+                        ans = question_dialog(self, _('Invalid identifier string'),
+                               _('The identifier string for book "{0}" (id {1}) is '
+                                 'invalid. It must be a comma-separated list of '
+                                 'pairs of strings separated by a colon.\n\n'
+                                 'Do you want to continue processing books?').format(mi.title, mi.id),
+                               det_msg='\n'.join([_('Result identifier string: '),
+                                                 ', '.join(val), '-----', traceback.format_exc()]),
+                               show_copy_button=True)
+                        return ans
         else:
             val = self.s_r_replace_mode_separator().join(val)
             if dest == 'title' and len(val) == 0:
@@ -1084,7 +1115,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         self.initialize_publisher()
         for x in ('authors', 'publisher', 'series'):
             x = getattr(self, x)
-            x.setSizeAdjustPolicy(x.AdjustToMinimumContentsLengthWithIcon)
+            x.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             x.setMinimumContentsLength(25)
 
     def initalize_authors(self):
@@ -1111,7 +1142,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
     def tag_editor(self, *args):
         d = TagEditor(self, self.db, None)
         d.exec_()
-        if d.result() == QDialog.Accepted:
+        if d.result() == QDialog.DialogCode.Accepted:
             tag_string = ', '.join(d.tags)
             self.tags.setText(tag_string)
             all_tags = self.db.new_api.all_field_names('tags')
@@ -1179,6 +1210,8 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         do_auto_author = self.auto_author_sort.isChecked()
         do_title_case = self.change_title_to_title_case.isChecked()
         do_title_sort = self.update_title_sort.isChecked()
+        do_compress_cover = self.compress_cover_images.isChecked()
+        compress_cover_quality = self.compress_quality.value()
         read_file_metadata = self.read_file_metadata.isChecked()
         clear_languages = self.clear_languages.isChecked()
         restore_original = self.restore_original.isChecked()
@@ -1208,7 +1241,7 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
             do_title_case, cover_action, clear_series, clear_pub, pubdate,
             adddate, do_title_sort, languages, clear_languages,
             restore_original, self.comments, self.generate_cover_settings,
-            read_file_metadata, self.casing_map[self.casing_algorithm.currentIndex()])
+            read_file_metadata, self.casing_map[self.casing_algorithm.currentIndex()], do_compress_cover, compress_cover_quality)
         if DEBUG:
             print('Running bulk metadata operation with settings:')
             print(args)
@@ -1236,6 +1269,14 @@ class MetadataBulkDialog(QDialog, Ui_MetadataBulkDialog):
         dynamic['s_r_search_mode'] = self.search_mode.currentIndex()
         gprefs.set('bulk-mde-casing-algorithm', args.casing_algorithm)
         self.db.clean()
+        if args.do_compress_cover:
+            total_old, total_new = bb.cover_sizes['old'], bb.cover_sizes['new']
+            percent = (total_old - total_new) / total_old
+            info_dialog(self, _('Covers compressed'), _(
+                'Covers were compressed by {percent:.1%} from a total size of'
+                ' {old} to {new}.').format(
+                    percent=percent, old=human_readable(total_old), new=human_readable(total_new))
+                ).exec_()
         return QDialog.accept(self)
 
     def series_changed(self, *args):

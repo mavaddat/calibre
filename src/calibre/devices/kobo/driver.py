@@ -38,6 +38,8 @@ from polyglot.builtins import iteritems, itervalues, unicode_type, string_or_byt
 EPUB_EXT  = '.epub'
 KEPUB_EXT = '.kepub'
 
+DEFAULT_COVER_LETTERBOX_COLOR = '#000000'
+
 # Implementation of QtQHash for strings. This doesn't seem to be in the Python implementation.
 
 
@@ -83,7 +85,10 @@ class KOBO(USBMS):
 
     dbversion = 0
     fwversion = (0,0,0)
-    supported_dbversion = 160
+    # The firmware for these devices is not being updated. But the Kobo desktop application
+    # will update the database if the device is connected. The database structure is completely
+    # backwardly compatible.
+    supported_dbversion = 162
     has_kepubs = False
 
     supported_platforms = ['windows', 'osx', 'linux']
@@ -981,7 +986,7 @@ class KOBO(USBMS):
         '''
         Upload book cover to the device. Default implementation does nothing.
 
-        :param path: The full path to the directory where the associated book is located.
+        :param path: The full path to the folder where the associated book is located.
         :param filename: The name of the book file without the extension.
         :param metadata: metadata belonging to the book. Use metadata.thumbnail
                          for cover
@@ -1350,7 +1355,7 @@ class KOBOTOUCH(KOBO):
         ' Based on the existing Kobo driver by %s.') % KOBO.author
 #    icon        = I('devices/kobotouch.jpg')
 
-    supported_dbversion             = 161
+    supported_dbversion             = 163
     min_supported_dbversion         = 53
     min_dbversion_series            = 65
     min_dbversion_externalid        = 65
@@ -1363,7 +1368,7 @@ class KOBOTOUCH(KOBO):
     # Starting with firmware version 3.19.x, the last number appears to be is a
     # build number. A number will be recorded here but it can be safely ignored
     # when testing the firmware version.
-    max_supported_fwversion         = (4, 25, 15821)
+    max_supported_fwversion         = (4, 28, 16705)
     # The following document firwmare versions where new function or devices were added.
     # Not all are used, but this feels a good place to record it.
     min_fwversion_shelves           = (2, 0, 0)
@@ -1381,6 +1386,7 @@ class KOBOTOUCH(KOBO):
     min_fwversion_dropbox           = (4, 18, 13737)  # The Forma only at this point.
     min_fwversion_serieslist        = (4, 20, 14601)  # Series list needs the SeriesID to be set.
     min_nia_fwversion               = (4, 22, 15202)
+    min_elipsa_fwversion            = (4, 28, 16705)
 
     has_kepubs = True
 
@@ -1407,6 +1413,7 @@ class KOBOTOUCH(KOBO):
     AURA_H2O_EDITION2_PRODUCT_ID = [0x4227]
     AURA_ONE_PRODUCT_ID = [0x4225]
     CLARA_HD_PRODUCT_ID = [0x4228]
+    ELIPSA_PRODUCT_ID   = [0x4233]
     FORMA_PRODUCT_ID    = [0x4229]
     GLO_PRODUCT_ID      = [0x4173]
     GLO_HD_PRODUCT_ID   = [0x4223]
@@ -1420,9 +1427,9 @@ class KOBOTOUCH(KOBO):
                           GLO_PRODUCT_ID + GLO_HD_PRODUCT_ID + \
                           MINI_PRODUCT_ID + TOUCH_PRODUCT_ID + TOUCH2_PRODUCT_ID + \
                           AURA_ONE_PRODUCT_ID + CLARA_HD_PRODUCT_ID + FORMA_PRODUCT_ID + LIBRA_H2O_PRODUCT_ID + \
-                          NIA_PRODUCT_ID
+                          NIA_PRODUCT_ID + ELIPSA_PRODUCT_ID
 
-    BCD = [0x0110, 0x0326, 0x401]
+    BCD = [0x0110, 0x0326, 0x401, 0x409]
 
     # Image file name endings. Made up of: image size, min_dbversion, max_dbversion, isFullSize,
     # Note: "200" has been used just as a much larger number than the current versions. It is just a lazy
@@ -1476,6 +1483,7 @@ class KOBOTOUCH(KOBO):
                           #       c.f., https://github.com/shermp/Kobo-UNCaGED/pull/17#discussion_r286209827
                           ' - N3_FULL.parsed':        [(1080,1429), 0, 200,True,],
                           }
+    # Aura ONE and Elipsa have the same resolution.
     AURA_ONE_COVER_FILE_ENDINGS = {
                           # Used for screensaver, home screen
                           ' - N3_FULL.parsed':        [(1404,1872), 0, 200,True,],
@@ -2580,7 +2588,7 @@ class KOBOTOUCH(KOBO):
         '''
         Upload book cover to the device. Default implementation does nothing.
 
-        :param path: The full path to the directory where the associated book is located.
+        :param path: The full path to the folder where the associated book is located.
         :param filename: The name of the book file without the extension.
         :param metadata: metadata belonging to the book. Use metadata.thumbnail
                          for cover
@@ -2604,7 +2612,8 @@ class KOBOTOUCH(KOBO):
             self._upload_cover(
                 path, filename, metadata, filepath,
                 self.upload_grayscale, self.dithered_covers,
-                self.keep_cover_aspect, self.letterbox_fs_covers, self.png_covers)
+                self.keep_cover_aspect, self.letterbox_fs_covers, self.png_covers,
+                letterbox_color=self.letterbox_fs_covers_color)
         except Exception as e:
             debug_print('KoboTouch: FAILED to upload cover=%s Exception=%s'%(filepath, unicode_type(e)))
 
@@ -2661,8 +2670,9 @@ class KOBOTOUCH(KOBO):
 
     def _create_cover_data(
         self, cover_data, resize_to, minify_to, kobo_size,
-        upload_grayscale=False, dithered_covers=False, keep_cover_aspect=False, is_full_size=False, letterbox=False, png_covers=False, quality=90
-):
+        upload_grayscale=False, dithered_covers=False, keep_cover_aspect=False, is_full_size=False, letterbox=False, png_covers=False, quality=90,
+        letterbox_color=DEFAULT_COVER_LETTERBOX_COLOR
+        ):
         '''
         This will generate the new cover image from the cover in the library. It is a wrapper
         for save_cover_data_to to allow it to be overriden in a subclass. For this reason,
@@ -2681,18 +2691,20 @@ class KOBOTOUCH(KOBO):
         :param letterbox:     True if we were asked to handle the letterboxing
         :param png_covers:    True if we were asked to encode those images in PNG instead of JPG
         :param quality:       0-100 Output encoding quality (or compression level for PNG, àla IM)
+        :param letterbox_color:  Colour used for letterboxing.
         '''
 
         from calibre.utils.img import save_cover_data_to
         data = save_cover_data_to(
             cover_data, resize_to=resize_to, compression_quality=quality, minify_to=minify_to, grayscale=upload_grayscale, eink=dithered_covers,
-            letterbox=letterbox, data_fmt="png" if png_covers else "jpeg")
+            letterbox=letterbox, data_fmt="png" if png_covers else "jpeg", letterbox_color=letterbox_color)
         return data
 
     def _upload_cover(
-        self, path, filename, metadata, filepath, upload_grayscale,
-        dithered_covers=False, keep_cover_aspect=False, letterbox_fs_covers=False, png_covers=False
-):
+            self, path, filename, metadata, filepath, upload_grayscale,
+            dithered_covers=False, keep_cover_aspect=False, letterbox_fs_covers=False, png_covers=False,
+            letterbox_color=DEFAULT_COVER_LETTERBOX_COLOR
+            ):
         from calibre.utils.imghdr import identify
         from calibre.utils.img import optimize_png
         debug_print("KoboTouch:_upload_cover - filename='%s' upload_grayscale='%s' dithered_covers='%s' "%(filename, upload_grayscale, dithered_covers))
@@ -2738,7 +2750,7 @@ class KOBOTOUCH(KOBO):
 
                 image_dir = os.path.dirname(os.path.abspath(path))
                 if not os.path.exists(image_dir):
-                    debug_print("KoboTouch:_upload_cover - Image directory does not exist. Creating path='%s'" % (image_dir))
+                    debug_print("KoboTouch:_upload_cover - Image folder does not exist. Creating path='%s'" % (image_dir))
                     os.makedirs(image_dir)
 
                 with lopen(cover, 'rb') as f:
@@ -2790,7 +2802,8 @@ class KOBOTOUCH(KOBO):
                         # Return the data resized and properly grayscaled/dithered/letterboxed if requested
                         data = self._create_cover_data(
                             cover_data, resize_to, expand_to, kobo_size, upload_grayscale,
-                            dithered_covers, keep_cover_aspect, is_full_size, letterbox, png_covers, quality)
+                            dithered_covers, keep_cover_aspect, is_full_size, letterbox, png_covers, quality,
+                            letterbox_color=letterbox_color)
 
                         # NOTE: If we're writing a PNG file, go through a quick
                         # optipng pass to make sure it's encoded properly, as
@@ -3323,6 +3336,7 @@ class KOBOTOUCH(KOBO):
         c.add_opt('keep_cover_aspect', default=False)
         c.add_opt('upload_grayscale', default=False)
         c.add_opt('letterbox_fs_covers', default=False)
+        c.add_opt('letterbox_fs_covers_color', default=DEFAULT_COVER_LETTERBOX_COLOR)
         c.add_opt('png_covers', default=False)
 
         c.add_opt('show_archived_books', default=False)
@@ -3375,6 +3389,9 @@ class KOBOTOUCH(KOBO):
     def isClaraHD(self):
         return self.detected_device.idProduct in self.CLARA_HD_PRODUCT_ID
 
+    def isElipsa(self):
+        return self.detected_device.idProduct in self.ELIPSA_PRODUCT_ID
+
     def isForma(self):
         return self.detected_device.idProduct in self.FORMA_PRODUCT_ID
 
@@ -3414,6 +3431,8 @@ class KOBOTOUCH(KOBO):
             _cover_file_endings = self.AURA_ONE_COVER_FILE_ENDINGS
         elif self.isClaraHD():
             _cover_file_endings = self.GLO_HD_COVER_FILE_ENDINGS
+        elif self.isElipsa():
+            _cover_file_endings = self.AURA_ONE_COVER_FILE_ENDINGS
         elif self.isForma():
             _cover_file_endings = self.FORMA_COVER_FILE_ENDINGS
         elif self.isGlo():
@@ -3454,6 +3473,8 @@ class KOBOTOUCH(KOBO):
             device_name = 'Kobo Aura ONE'
         elif self.isClaraHD():
             device_name = 'Kobo Clara HD'
+        elif self.isElipsa():
+            device_name = 'Kobo Elipsa'
         elif self.isForma():
             device_name = 'Kobo Forma'
         elif self.isGlo():
@@ -3533,6 +3554,10 @@ class KOBOTOUCH(KOBO):
         return self.keep_cover_aspect and self.get_pref('letterbox_fs_covers')
 
     @property
+    def letterbox_fs_covers_color(self):
+        return self.get_pref('letterbox_fs_covers_color')
+
+    @property
     def png_covers(self):
         return self.upload_grayscale and self.get_pref('png_covers')
 
@@ -3557,13 +3582,13 @@ class KOBOTOUCH(KOBO):
     @property
     def update_subtitle(self):
         # Subtitle was added to the database at the same time as the series support.
-        return self.update_device_metadata and self.supports_series() and self.subtitle_template is not None
+        return self.update_device_metadata and self.supports_series() and self.get_pref('update_subtitle')
 
     @property
     def subtitle_template(self):
+        if not self.update_subtitle:
+            return None
         subtitle_template = self.get_pref('subtitle_template')
-        if subtitle_template is not None:
-            subtitle_template = subtitle_template.strip()
         subtitle_template = subtitle_template.strip() if subtitle_template is not None else None
         return subtitle_template
 
@@ -3645,14 +3670,21 @@ class KOBOTOUCH(KOBO):
                     ' If you are willing to experiment and know how to reset'
                     ' your Kobo to Factory defaults, you can override this'
                     ' check by right clicking the device icon in calibre and'
-                    ' selecting "Configure this device" and then the '
+                    ' selecting "Configure this device" and then the'
                     ' "Attempt to support newer firmware" option.'
                     ' Doing so may require you to perform a factory reset of'
-                    ' your Kobo.') + (
+                    ' your Kobo.'
+                    ) +
+                    '\n\n' +
+                    _('Discussion of any new Kobo firmware can be found in the'
+                      ' Kobo forum at MobileRead. This is at %s.'
+                      ) % 'https://www.mobileread.com/forums/forumdisplay.php?f=223' + '\n' +
+                    (
                     '\nDevice database version: %s.'
                     '\nDevice firmware version: %s'
                      ) % (self.dbversion, self.fwversion),
-                     UserFeedback.WARN)
+                    UserFeedback.WARN
+                    )
 
                 return False
             else:

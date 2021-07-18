@@ -4,20 +4,20 @@
 
 
 import json
-import textwrap
 import time
 from collections import defaultdict
 from functools import partial
+from qt.core import (
+    QAction, QApplication, QByteArray, QHBoxLayout, QIcon, QLabel, QMenu, QSize,
+    QSizePolicy, QStackedLayout, Qt, QTimer, QToolBar, QUrl, QVBoxLayout, QWidget,
+    pyqtSignal
+)
+from qt.webengine import (
+    QWebEngineContextMenuData, QWebEnginePage, QWebEngineProfile, QWebEngineScript,
+    QWebEngineSettings, QWebEngineUrlRequestInfo, QWebEngineUrlRequestJob,
+    QWebEngineUrlSchemeHandler, QWebEngineView
+)
 from threading import Thread
-
-from PyQt5.Qt import (
-    QApplication, QByteArray, QHBoxLayout, QIcon, QLabel, QMenu, QSize, QSizePolicy,
-    QStackedLayout, Qt, QTimer, QToolBar, QUrl, QVBoxLayout, QWidget, pyqtSignal
-)
-from PyQt5.QtWebEngineCore import QWebEngineUrlSchemeHandler
-from PyQt5.QtWebEngineWidgets import (
-    QWebEnginePage, QWebEngineProfile, QWebEngineScript, QWebEngineView
-)
 
 from calibre import prints
 from calibre.constants import (
@@ -25,7 +25,10 @@ from calibre.constants import (
 )
 from calibre.ebooks.oeb.base import OEB_DOCS, XHTML_MIME, serialize
 from calibre.ebooks.oeb.polish.parsing import parse
-from calibre.gui2 import NO_URL_FORMATTING, error_dialog, is_dark_theme, open_url
+from calibre.gui2 import (
+    NO_URL_FORMATTING, QT_HIDDEN_CLEAR_ACTION, error_dialog, is_dark_theme,
+    safe_open_url
+)
 from calibre.gui2.palette import dark_color, dark_link_color, dark_text_color
 from calibre.gui2.tweak_book import TOP, actions, current_container, editors, tprefs
 from calibre.gui2.tweak_book.file_list import OpenWithHandler
@@ -170,11 +173,11 @@ class UrlSchemeHandler(QWebEngineUrlSchemeHandler):
 
     def requestStarted(self, rq):
         if bytes(rq.requestMethod()) != b'GET':
-            rq.fail(rq.RequestDenied)
+            rq.fail(QWebEngineUrlRequestJob.Error.RequestDenied)
             return
         url = rq.requestUrl()
         if url.host() != FAKE_HOST or url.scheme() != FAKE_PROTOCOL:
-            rq.fail(rq.UrlNotFound)
+            rq.fail(QWebEngineUrlRequestJob.Error.UrlNotFound)
             return
         name = url.path()[1:]
         try:
@@ -183,7 +186,7 @@ class UrlSchemeHandler(QWebEngineUrlSchemeHandler):
                 return
             c = current_container()
             if not c.has_name(name):
-                rq.fail(rq.UrlNotFound)
+                rq.fail(QWebEngineUrlRequestJob.Error.UrlNotFound)
                 return
             mime_type = c.mime_map.get(name, 'application/octet-stream')
             if mime_type in OEB_DOCS:
@@ -204,7 +207,7 @@ class UrlSchemeHandler(QWebEngineUrlSchemeHandler):
         except Exception:
             import traceback
             traceback.print_exc()
-            rq.fail(rq.RequestFailed)
+            rq.fail(QWebEngineUrlRequestJob.Error.RequestFailed)
 
     def check_for_parse(self):
         remove = []
@@ -234,6 +237,60 @@ def uniq(vals):
     return tuple(x for x in vals if x not in seen and not seen_add(x))
 
 
+def get_editor_settings(tprefs):
+    dark = is_dark_theme()
+
+    def get_color(name, dark_val):
+        ans = tprefs[name]
+        if ans == 'auto' and dark:
+            ans = dark_val.name()
+        if ans in ('auto', 'unset'):
+            return None
+        return ans
+
+    return {
+        'is_dark_theme': dark,
+        'bg': get_color('preview_background', dark_color),
+        'fg': get_color('preview_foreground', dark_text_color),
+        'link': get_color('preview_link_color', dark_link_color),
+    }
+
+
+def create_dark_mode_script():
+    dark_mode_css = P('dark_mode.css', data=True, allow_user_override=False).decode('utf-8')
+    return create_script('dark-mode.js', '''
+    (function() {
+        var settings = JSON.parse(navigator.userAgent.split('|')[1]);
+        var dark_css = CSS;
+
+        function apply_body_colors(event) {
+            if (document.documentElement) {
+                if (settings.bg) document.documentElement.style.backgroundColor = settings.bg;
+                if (settings.fg) document.documentElement.style.color = settings.fg;
+            }
+            if (document.body) {
+                if (settings.bg) document.body.style.backgroundColor = settings.bg;
+                if (settings.fg) document.body.style.color = settings.fg;
+            }
+        }
+
+        function apply_css() {
+            var css = '';
+            if (settings.link) css += 'html > body :link, html > body :link * { color: ' + settings.link + ' !important; }';
+            if (settings.is_dark_theme) { css += dark_css; }
+            var style = document.createElement('style');
+            style.textContent = css;
+            document.documentElement.appendChild(style);
+            apply_body_colors();
+        }
+
+        apply_body_colors();
+        document.addEventListener("DOMContentLoaded", apply_css);
+    })();
+    '''.replace('CSS', json.dumps(dark_mode_css), 1),
+    injection_point=QWebEngineScript.InjectionPoint.DocumentCreation)
+
+
 def create_profile():
     ans = getattr(create_profile, 'ans', None)
     if ans is None:
@@ -245,49 +302,18 @@ def create_profile():
             compile_editor()
         js = P('editor.js', data=True, allow_user_override=False)
         cparser = P('csscolorparser.js', data=True, allow_user_override=False)
-        dark_mode_css = P('dark_mode.css', data=True, allow_user_override=False).decode('utf-8')
 
         insert_scripts(ans,
             create_script('csscolorparser.js', cparser),
             create_script('editor.js', js),
-            create_script('dark-mode.js', '''
-            (function() {
-                var settings = JSON.parse(navigator.userAgent.split('|')[1]);
-                var dark_css = CSS;
-
-                function apply_body_colors(event) {
-                    if (document.documentElement) {
-                        if (settings.bg) document.documentElement.style.backgroundColor = settings.bg;
-                        if (settings.fg) document.documentElement.style.color = settings.fg;
-                    }
-                    if (document.body) {
-                        if (settings.bg) document.body.style.backgroundColor = settings.bg;
-                        if (settings.fg) document.body.style.color = settings.fg;
-                    }
-                }
-
-                function apply_css() {
-                    var css = '';
-                    if (settings.link) css += 'html > body :link, html > body :link * { color: ' + settings.link + ' !important; }';
-                    if (settings.is_dark_theme) { css += dark_css; }
-                    var style = document.createElement('style');
-                    style.textContent = css;
-                    document.documentElement.appendChild(style);
-                    apply_body_colors();
-                }
-
-                apply_body_colors();
-                document.addEventListener("DOMContentLoaded", apply_css);
-            })();
-            '''.replace('CSS', json.dumps(dark_mode_css), 1),
-            injection_point=QWebEngineScript.DocumentCreation)
+            create_dark_mode_script(),
         )
         url_handler = UrlSchemeHandler(ans)
         ans.installUrlSchemeHandler(QByteArray(FAKE_PROTOCOL.encode('ascii')), url_handler)
         s = ans.settings()
         s.setDefaultTextEncoding('utf-8')
-        s.setAttribute(s.FullScreenSupportEnabled, False)
-        s.setAttribute(s.LinksIncludedInFocusChain, False)
+        s.setAttribute(QWebEngineSettings.WebAttribute.FullScreenSupportEnabled, False)
+        s.setAttribute(QWebEngineSettings.WebAttribute.LinksIncludedInFocusChain, False)
         create_profile.ans = ans
     return ans
 
@@ -315,11 +341,12 @@ class WebPage(QWebEnginePage):
         prints('%s:%s: %s' % (source_id, linenumber, msg))
 
     def acceptNavigationRequest(self, url, req_type, is_main_frame):
-        if req_type == self.NavigationTypeReload:
+        if req_type == QWebEngineUrlRequestInfo.NavigationType.NavigationTypeReload:
             return True
         if url.scheme() in (FAKE_PROTOCOL, 'data'):
             return True
-        open_url(url)
+        if req_type == QWebEnginePage.NavigationType.NavigationTypeLinkClicked:
+            safe_open_url(url)
         return False
 
     def go_to_anchor(self, anchor):
@@ -329,9 +356,9 @@ class WebPage(QWebEnginePage):
 
     def runjs(self, src, callback=None):
         if callback is None:
-            self.runJavaScript(src, QWebEngineScript.ApplicationWorld)
+            self.runJavaScript(src, QWebEngineScript.ScriptWorldId.ApplicationWorld)
         else:
-            self.runJavaScript(src, QWebEngineScript.ApplicationWorld, callback)
+            self.runJavaScript(src, QWebEngineScript.ScriptWorldId.ApplicationWorld, callback)
 
     def go_to_sourceline_address(self, sourceline_address):
         if self.bridge.ready:
@@ -339,7 +366,7 @@ class WebPage(QWebEnginePage):
             if lnum is None:
                 return
             tags = [x.lower() for x in tags]
-            self.bridge.go_to_sourceline_address.emit(lnum, tags)
+            self.bridge.go_to_sourceline_address.emit(lnum, tags, tprefs['preview_sync_context'])
 
     def split_mode(self, enabled):
         if self.bridge.ready:
@@ -398,29 +425,14 @@ class WebView(RestartingWebEngineView, OpenWithHandler):
         return self._size_hint
 
     def update_settings(self):
-        dark = is_dark_theme()
-
-        def get_color(name, dark_val):
-            ans = tprefs[name]
-            if ans == 'auto' and dark:
-                ans = dark_val.name()
-            if ans in ('auto', 'unset'):
-                return None
-            return ans
-
-        settings = {
-            'is_dark_theme': dark,
-            'bg': get_color('preview_background', dark_color),
-            'fg': get_color('preview_foreground', dark_text_color),
-            'link': get_color('preview_link_color', dark_link_color),
-        }
+        settings = get_editor_settings(tprefs)
         p = self._page.profile()
         ua = p.httpUserAgent().split('|')[0] + '|' + json.dumps(settings)
         p.setHttpUserAgent(ua)
 
     def refresh(self):
         self.update_settings()
-        self.pageAction(QWebEnginePage.ReloadAndBypassCache).trigger()
+        self.pageAction(QWebEnginePage.WebAction.ReloadAndBypassCache).trigger()
 
     def set_url(self, qurl):
         self.update_settings()
@@ -443,7 +455,7 @@ class WebView(RestartingWebEngineView, OpenWithHandler):
     def inspect(self):
         self.inspector.parent().show()
         self.inspector.parent().raise_()
-        self.pageAction(QWebEnginePage.InspectElement).trigger()
+        self.pageAction(QWebEnginePage.WebAction.InspectElement).trigger()
 
     def contextMenuEvent(self, ev):
         menu = QMenu(self)
@@ -452,14 +464,14 @@ class WebView(RestartingWebEngineView, OpenWithHandler):
         url = unicode_type(url.toString(NO_URL_FORMATTING)).strip()
         text = data.selectedText()
         if text:
-            ca = self.pageAction(QWebEnginePage.Copy)
+            ca = self.pageAction(QWebEnginePage.WebAction.Copy)
             if ca.isEnabled():
                 menu.addAction(ca)
         menu.addAction(actions['reload-preview'])
         menu.addAction(QIcon(I('debug.png')), _('Inspect element'), self.inspect)
         if url.partition(':')[0].lower() in {'http', 'https'}:
-            menu.addAction(_('Open link'), partial(open_url, data.linkUrl()))
-        if data.MediaTypeImage <= data.mediaType() <= data.MediaTypeFile:
+            menu.addAction(_('Open link'), partial(safe_open_url, data.linkUrl()))
+        if QWebEngineContextMenuData.MediaType.MediaTypeImage <= data.mediaType() <= QWebEngineContextMenuData.MediaType.MediaTypeFile:
             url = data.mediaUrl()
             if url.scheme() == FAKE_PROTOCOL:
                 href = url.path().lstrip('/')
@@ -468,7 +480,7 @@ class WebView(RestartingWebEngineView, OpenWithHandler):
                     resource_name = c.href_to_name(href)
                     if resource_name and c.exists(resource_name) and resource_name not in c.names_that_must_not_be_changed:
                         self.add_open_with_actions(menu, resource_name)
-                        if data.mediaType() == data.MediaTypeImage:
+                        if data.mediaType() == QWebEngineContextMenuData.MediaType.MediaTypeImage:
                             mime = c.mime_map[resource_name]
                             if mime.startswith('image/'):
                                 menu.addAction(_('Edit %s') % resource_name, partial(self.edit_image, resource_name))
@@ -500,7 +512,7 @@ class Preview(QWidget):
         self.setLayout(l)
         l.setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedLayout(l)
-        self.stack.setStackingMode(self.stack.StackAll)
+        self.stack.setStackingMode(QStackedLayout.StackingMode.StackAll)
         self.current_sync_retry_count = 0
         self.view = WebView(self)
         self.view._page.bridge.request_sync.connect(self.request_sync)
@@ -515,9 +527,9 @@ class Preview(QWidget):
         self.stack.addWidget(self.view)
         self.cover = c = QLabel(_('Loading preview, please wait...'))
         c.setWordWrap(True)
-        c.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        c.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         c.setStyleSheet('QLabel { background-color: palette(window); }')
-        c.setAlignment(Qt.AlignCenter)
+        c.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.stack.addWidget(self.cover)
         self.stack.setCurrentIndex(self.stack.indexOf(self.cover))
         self.bar = QToolBar(self)
@@ -560,6 +572,10 @@ class Preview(QWidget):
         self.current_sync_request = None
 
         self.search = HistoryLineEdit2(self)
+        self.search.setClearButtonEnabled(True)
+        ac = self.search.findChild(QAction, QT_HIDDEN_CLEAR_ACTION)
+        if ac is not None:
+            ac.triggered.connect(self.clear_clicked)
         self.search.initialize('tweak_book_preview_search')
         self.search.setPlaceholderText(_('Search in preview'))
         self.search.returnPressed.connect(self.find_next)
@@ -570,10 +586,13 @@ class Preview(QWidget):
             ac.triggered.connect(getattr(self, 'find_' + d))
             self.bar.addAction(ac)
 
+    def clear_clicked(self):
+        self.view._page.findText('')
+
     def find(self, direction):
         text = unicode_type(self.search.text())
         self.view._page.findText(text, (
-            QWebEnginePage.FindBackward if direction == 'prev' else QWebEnginePage.FindFlags(0)))
+            QWebEnginePage.FindFlag.FindBackward if direction == 'prev' else QWebEnginePage.FindFlags(0)))
 
     def find_next(self):
         self.find('next')
@@ -706,9 +725,9 @@ class Preview(QWidget):
             self.refresh()
 
     def split_toggled(self, checked):
-        actions['split-in-preview'].setToolTip(textwrap.fill(_(
+        actions['split-in-preview'].setToolTip('<p>' + (_(
             'Abort file split') if checked else _(
-                'Split this file at a specified location.\n\nAfter clicking this button, click'
+                'Split this file at a specified location.<p>After clicking this button, click'
                 ' inside the preview panel above at the location you want the file to be split.')))
         if checked:
             self.split_start_requested.emit()
@@ -744,17 +763,21 @@ class Preview(QWidget):
 
     def apply_settings(self):
         s = self.view.settings()
-        s.setFontSize(s.DefaultFontSize, tprefs['preview_base_font_size'])
-        s.setFontSize(s.DefaultFixedFontSize, tprefs['preview_mono_font_size'])
-        s.setFontSize(s.MinimumLogicalFontSize, tprefs['preview_minimum_font_size'])
-        s.setFontSize(s.MinimumFontSize, tprefs['preview_minimum_font_size'])
+        s.setFontSize(QWebEngineSettings.FontSize.DefaultFontSize, tprefs['preview_base_font_size'])
+        s.setFontSize(QWebEngineSettings.FontSize.DefaultFixedFontSize, tprefs['preview_mono_font_size'])
+        s.setFontSize(QWebEngineSettings.FontSize.MinimumLogicalFontSize, tprefs['preview_minimum_font_size'])
+        s.setFontSize(QWebEngineSettings.FontSize.MinimumFontSize, tprefs['preview_minimum_font_size'])
         sf, ssf, mf = tprefs['engine_preview_serif_family'], tprefs['engine_preview_sans_family'], tprefs['engine_preview_mono_family']
         if sf:
-            s.setFontFamily(s.SerifFont, sf)
+            s.setFontFamily(QWebEngineSettings.FontFamily.SerifFont, sf)
         if ssf:
-            s.setFontFamily(s.SansSerifFont, ssf)
+            s.setFontFamily(QWebEngineSettings.FontFamily.SansSerifFont, ssf)
         if mf:
-            s.setFontFamily(s.FixedFont, mf)
+            s.setFontFamily(QWebEngineSettings.FontFamily.FixedFont, mf)
         stdfnt = tprefs['preview_standard_font_family'] or 'serif'
-        stdfnt = getattr(s, {'serif': 'SerifFont', 'sans': 'SansSerifFont', 'mono': 'FixedFont'}[stdfnt])
-        s.setFontFamily(s.StandardFont, s.fontFamily(stdfnt))
+        stdfnt = {
+            'serif': QWebEngineSettings.FontFamily.SerifFont,
+            'sans': QWebEngineSettings.FontFamily.SansSerifFont,
+            'mono': QWebEngineSettings.FontFamily.FixedFont
+        }[stdfnt]
+        s.setFontFamily(QWebEngineSettings.FontFamily.StandardFont, s.fontFamily(stdfnt))

@@ -5,7 +5,7 @@ __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 
 from functools import partial
 
-from PyQt5.Qt import (
+from qt.core import (
     QDialog, QListWidgetItem, QModelIndex, QIcon, QLabel, QVBoxLayout, QSize,
     QDialogButtonBox, QListWidget, QHBoxLayout, QPushButton, QMenu)
 
@@ -37,7 +37,7 @@ class ChooseFormatDialog(QDialog):
             self.owb.setMenu(self.own)
             self.own.aboutToShow.connect(self.populate_open_with)
         self.buttonBox = bb = QDialogButtonBox(self)
-        bb.setStandardButtons(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        bb.setStandardButtons(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept), bb.rejected.connect(self.reject)
         h.addStretch(10), h.addWidget(self.buttonBox)
 

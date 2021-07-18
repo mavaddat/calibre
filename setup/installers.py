@@ -222,7 +222,7 @@ class ExtDev(Command):
 
     def run(self, opts):
         which, ext = opts.cli_args[:2]
-        cmd = opts.cli_args[2:]
+        cmd = opts.cli_args[2:] or ['calibre-debug', '--test-build']
         bitness = '64' if which == 'windows' else ''
         ext_dir = build_only(which, bitness, ext)
         if which == 'windows':
@@ -230,6 +230,10 @@ class ExtDev(Command):
             path = '/cygdrive/c/Program Files/Calibre2/app/bin/{}.pyd'
             bin_dir = '/cygdrive/c/Program Files/Calibre2'
         elif which == 'macos':
+            print(
+                "\n\n\x1b[33;1mWARNING: This does not work on macOS, unless you use un-signed builds with ",
+                ' ./update-on-ox develop\x1b[m',
+                file=sys.stderr, end='\n\n\n')
             host = 'ox'
             path = '/Applications/calibre.app/Contents/Frameworks/plugins/{}.so'
             bin_dir = '/Applications/calibre.app/Contents/MacOS'

@@ -13,14 +13,13 @@ import threading
 from contextlib import contextmanager
 from threading import Lock, RLock
 
-from PyQt5.Qt import (
+from qt.core import (
     QT_VERSION, QApplication, QBuffer, QByteArray, QCoreApplication, QDateTime,
     QDesktopServices, QDialog, QEvent, QFileDialog, QFileIconProvider, QFileInfo, QPalette,
     QFont, QFontDatabase, QFontInfo, QFontMetrics, QIcon, QLocale, QColor,
     QNetworkProxyFactory, QObject, QSettings, QSocketNotifier, QStringListModel, Qt,
-    QThread, QTimer, QTranslator, QUrl, pyqtSignal
+    QThread, QTimer, QTranslator, QUrl, pyqtSignal, QIODevice, QDialogButtonBox, QStyle
 )
-from PyQt5.QtWidgets import QStyle  # Gives a nicer error message than import from Qt
 
 from calibre import as_unicode, prints
 from calibre.constants import (
@@ -44,7 +43,7 @@ from polyglot.builtins import (
 )
 
 try:
-    NO_URL_FORMATTING = QUrl.None_
+    NO_URL_FORMATTING = QUrl.UrlFormattingOption.None_
 except AttributeError:
     NO_URL_FORMATTING = getattr(QUrl, 'None')
 
@@ -117,14 +116,16 @@ def create_defs():
 
     defs['action-layout-context-menu-device'] = (
             'View', 'Save To Disk', None, 'Remove Books', None,
-            'Add To Library', 'Edit Collections', 'Match Books'
+            'Add To Library', 'Edit Collections', 'Match Books',
+            'Show Matched Book In Library'
             )
 
     defs['action-layout-context-menu-cover-browser'] = (
             'Edit Metadata', 'Send To Device', 'Save To Disk',
             'Connect Share', 'Copy To Library', None,
             'Convert Books', 'View', 'Open Folder', 'Show Book Details',
-            'Similar Books', 'Tweak ePub', None, 'Remove Books',
+            'Similar Books', 'Tweak ePub', None, 'Remove Books', None,
+            'Autoscroll Books'
             )
 
     defs['show_splash_screen'] = True
@@ -198,6 +199,7 @@ def create_defs():
     defs['browse_annots_restrict_to_type'] = None
     defs['browse_annots_use_stemmer'] = True
     defs['annots_export_format'] = 'txt'
+    defs['books_autoscroll_time'] = 2.0
 
 
 create_defs()
@@ -233,7 +235,7 @@ def _config():  # {{{
     c.add_opt('LRF_ebook_viewer_options', default=None,
               help=_('Options for the LRF e-book viewer'))
     c.add_opt('internally_viewed_formats', default=['LRF', 'EPUB', 'LIT',
-        'MOBI', 'PRC', 'POBI', 'AZW', 'AZW3', 'HTML', 'FB2', 'PDB', 'RB',
+        'MOBI', 'PRC', 'POBI', 'AZW', 'AZW3', 'HTML', 'FB2', 'FBZ', 'PDB', 'RB',
         'SNB', 'HTMLZ', 'KEPUB'], help=_(
             'Formats that are viewed using the internal viewer'))
     c.add_opt('column_map', default=ALL_COLUMNS,
@@ -307,7 +309,7 @@ def _config():  # {{{
     # This option is no longer used. It remains for compatibility with upgrades
     # so the value can be migrated
     c.add_opt('tag_browser_hidden_categories', default=set(),
-            help=_('tag browser categories not to display'))
+            help=_('Tag browser categories not to display'))
 
     c.add_opt
     return ConfigProxy(c)
@@ -317,9 +319,9 @@ config = _config()
 
 # }}}
 
-QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, config_dir)
-QSettings.setPath(QSettings.IniFormat, QSettings.SystemScope, config_dir)
-QSettings.setDefaultFormat(QSettings.IniFormat)
+QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.UserScope, config_dir)
+QSettings.setPath(QSettings.Format.IniFormat, QSettings.Scope.SystemScope, config_dir)
+QSettings.setDefaultFormat(QSettings.Format.IniFormat)
 
 
 def default_author_link():
@@ -398,6 +400,10 @@ def error_dialog(parent, title, msg, det_msg='', show=False,
     return d
 
 
+class Aborted(Exception):
+    pass
+
+
 def question_dialog(parent, title, msg, det_msg='', show_copy_button=False,
     default_yes=True,
     # Skippable dialogs
@@ -410,13 +416,17 @@ def question_dialog(parent, title, msg, det_msg='', show_copy_button=False,
     # Change the text/icons of the yes and no buttons.
     # The icons must be QIcon objects or strings for I()
     yes_text=None, no_text=None, yes_icon=None, no_icon=None,
+    # Add an Abort button which if clicked will cause this function to raise
+    # the Aborted exception
+    add_abort_button=False,
 ):
     from calibre.gui2.dialogs.message_box import MessageBox
+    prefs = gui_prefs()
 
     if not isinstance(skip_dialog_name, unicode_type):
         skip_dialog_name = None
     try:
-        auto_skip = set(gprefs.get('questions_to_auto_skip', ()))
+        auto_skip = set(prefs.get('questions_to_auto_skip', ()))
     except Exception:
         auto_skip = set()
     if (skip_dialog_name is not None and skip_dialog_name in auto_skip):
@@ -425,7 +435,7 @@ def question_dialog(parent, title, msg, det_msg='', show_copy_button=False,
     d = MessageBox(MessageBox.QUESTION, title, msg, det_msg, parent=parent,
                    show_copy_button=show_copy_button, default_yes=default_yes,
                    q_icon=override_icon, yes_text=yes_text, no_text=no_text,
-                   yes_icon=yes_icon, no_icon=no_icon)
+                   yes_icon=yes_icon, no_icon=no_icon, add_abort_button=add_abort_button)
 
     if skip_dialog_name is not None and skip_dialog_msg:
         tc = d.toggle_checkbox
@@ -434,20 +444,22 @@ def question_dialog(parent, title, msg, det_msg='', show_copy_button=False,
         tc.setChecked(bool(skip_dialog_skip_precheck))
         d.resize_needed.emit()
 
-    ret = d.exec_() == d.Accepted
+    ret = d.exec_() == QDialog.DialogCode.Accepted
+    if add_abort_button and d.aborted:
+        raise Aborted()
 
     if skip_dialog_name is not None and not d.toggle_checkbox.isChecked():
         auto_skip.add(skip_dialog_name)
-        gprefs.set('questions_to_auto_skip', list(auto_skip))
+        prefs.set('questions_to_auto_skip', list(auto_skip))
 
     return ret
 
 
 def info_dialog(parent, title, msg, det_msg='', show=False,
-        show_copy_button=True):
+        show_copy_button=True, only_copy_details=False):
     from calibre.gui2.dialogs.message_box import MessageBox
     d = MessageBox(MessageBox.INFO, title, msg, det_msg, parent=parent,
-                    show_copy_button=show_copy_button)
+                    show_copy_button=show_copy_button, only_copy_details=only_copy_details)
 
     if show:
         return d.exec_()
@@ -457,7 +469,7 @@ def info_dialog(parent, title, msg, det_msg='', show=False,
 def show_restart_warning(msg, parent=None):
     d = warning_dialog(parent, _('Restart needed'), msg,
             show_copy_button=False)
-    b = d.bb.addButton(_('&Restart calibre now'), d.bb.AcceptRole)
+    b = d.bb.addButton(_('&Restart calibre now'), QDialogButtonBox.ButtonRole.AcceptRole)
     b.setIcon(QIcon(I('lt.png')))
     d.do_restart = False
 
@@ -484,9 +496,9 @@ class Dispatcher(QObject):
     def __init__(self, func, queued=True, parent=None):
         QObject.__init__(self, parent)
         self.func = func
-        typ = Qt.QueuedConnection
+        typ = Qt.ConnectionType.QueuedConnection
         if not queued:
-            typ = Qt.AutoConnection if queued is None else Qt.DirectConnection
+            typ = Qt.ConnectionType.AutoConnection if queued is None else Qt.ConnectionType.DirectConnection
         self.dispatch_signal.connect(self.dispatch, type=typ)
 
     def __call__(self, *args, **kwargs):
@@ -516,9 +528,9 @@ class FunctionDispatcher(QObject):
 
         QObject.__init__(self, parent)
         self.func = func
-        typ = Qt.QueuedConnection
+        typ = Qt.ConnectionType.QueuedConnection
         if not queued:
-            typ = Qt.AutoConnection if queued is None else Qt.DirectConnection
+            typ = Qt.ConnectionType.AutoConnection if queued is None else Qt.ConnectionType.DirectConnection
         self.dispatch_signal.connect(self.dispatch, type=typ)
         self.q = queue.Queue()
         self.lock = threading.Lock()
@@ -552,8 +564,8 @@ class GetMetadata(QObject):
 
     def __init__(self):
         QObject.__init__(self)
-        self.edispatch.connect(self._get_metadata, type=Qt.QueuedConnection)
-        self.idispatch.connect(self._from_formats, type=Qt.QueuedConnection)
+        self.edispatch.connect(self._get_metadata, type=Qt.ConnectionType.QueuedConnection)
+        self.idispatch.connect(self._from_formats, type=Qt.ConnectionType.QueuedConnection)
 
     def __call__(self, id, *args, **kwargs):
         self.edispatch.emit(id, args, kwargs)
@@ -638,9 +650,9 @@ class FileIconProvider(QFileIconProvider):
     def icon(self, arg):
         if isinstance(arg, QFileInfo):
             return self.load_icon(arg)
-        if arg == QFileIconProvider.Folder:
+        if arg == QFileIconProvider.IconType.Folder:
             return self.icons['dir']
-        if arg == QFileIconProvider.File:
+        if arg == QFileIconProvider.IconType.File:
             return self.icons['default']
         return QFileIconProvider.icon(self, arg)
 
@@ -680,12 +692,12 @@ else:
 
 def is_dark_theme():
     pal = QApplication.instance().palette()
-    col = pal.color(pal.Window)
+    col = pal.color(QPalette.ColorRole.Window)
     return max(col.getRgb()[:3]) < 115
 
 
 def choose_osx_app(window, name, title, default_dir='/Applications'):
-    fd = FileDialog(title=title, parent=window, name=name, mode=QFileDialog.ExistingFile,
+    fd = FileDialog(title=title, parent=window, name=name, mode=QFileDialog.FileMode.ExistingFile,
             default_dir=default_dir)
     app = fd.get_files()
     fd.setParent(None)
@@ -708,7 +720,7 @@ def pixmap_to_data(pixmap, format='JPEG', quality=None):
             quality = 90
     ba = QByteArray()
     buf = QBuffer(ba)
-    buf.open(QBuffer.WriteOnly)
+    buf.open(QIODevice.OpenModeFlag.WriteOnly)
     pixmap.save(buf, format, quality=quality)
     return ba.data()
 
@@ -804,8 +816,8 @@ def show_temp_dir_error(err):
     extra = _('Click "Show details" for more information.')
     if 'CALIBRE_TEMP_DIR' in os.environ:
         extra = _('The %s environment variable is set. Try unsetting it.') % 'CALIBRE_TEMP_DIR'
-    error_dialog(None, _('Could not create temporary directory'), _(
-        'Could not create temporary directory, calibre cannot start.') + ' ' + extra, det_msg=traceback.format_exc(), show=True)
+    error_dialog(None, _('Could not create temporary folder'), _(
+        'Could not create temporary folder, calibre cannot start.') + ' ' + extra, det_msg=traceback.format_exc(), show=True)
 
 
 def setup_hidpi():
@@ -820,11 +832,11 @@ def setup_hidpi():
     if hidpi == 'on' or (hidpi == 'auto' and not has_env_setting):
         if DEBUG:
             prints('Turning on automatic hidpi scaling')
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
     elif hidpi == 'off':
         if DEBUG:
             prints('Turning off automatic hidpi scaling')
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, False)
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, False)
         for p in env_vars:
             os.environ.pop(p, None)
     elif DEBUG:
@@ -851,9 +863,9 @@ def setup_unix_signals(self):
         original_handlers[sig] = signal.signal(sig, lambda x, y: None)
         signal.siginterrupt(sig, False)
     signal.set_wakeup_fd(write_fd)
-    self.signal_notifier = QSocketNotifier(read_fd, QSocketNotifier.Read, self)
+    self.signal_notifier = QSocketNotifier(read_fd, QSocketNotifier.Type.Read, self)
     self.signal_notifier.setEnabled(True)
-    self.signal_notifier.activated.connect(self.signal_received, type=Qt.QueuedConnection)
+    self.signal_notifier.activated.connect(self.signal_received, type=Qt.ConnectionType.QueuedConnection)
     return original_handlers
 
 
@@ -893,7 +905,7 @@ class Application(QApplication):
         QApplication.setApplicationName(APP_UID)
         if override_program_name and hasattr(QApplication, 'setDesktopFileName'):
             QApplication.setDesktopFileName(override_program_name)
-        QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)  # needed for webengine
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts, True)  # needed for webengine
         QApplication.__init__(self, qargs)
         sh = self.styleHints()
         if hasattr(sh, 'setShowShortcutsInContextMenus'):
@@ -901,14 +913,14 @@ class Application(QApplication):
         if ismacos:
             from calibre_extensions.cocoa import disable_cocoa_ui_elements
             disable_cocoa_ui_elements()
-        self.setAttribute(Qt.AA_UseHighDpiPixmaps)
-        self.setAttribute(Qt.AA_SynthesizeTouchForUnhandledMouseEvents, False)
+        self.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps)
+        self.setAttribute(Qt.ApplicationAttribute.AA_SynthesizeTouchForUnhandledMouseEvents, False)
         try:
             base_dir()
         except EnvironmentError as err:
             if not headless:
                 show_temp_dir_error(err)
-            raise SystemExit('Failed to create temporary directory')
+            raise SystemExit('Failed to create temporary folder')
         if DEBUG and not headless:
             prints('devicePixelRatio:', self.devicePixelRatio())
             s = self.primaryScreen()
@@ -918,7 +930,7 @@ class Application(QApplication):
         if not iswindows:
             self.setup_unix_signals()
         if islinux or isbsd:
-            self.setAttribute(Qt.AA_DontUseNativeMenuBar, 'CALIBRE_NO_NATIVE_MENUBAR' in os.environ)
+            self.setAttribute(Qt.ApplicationAttribute.AA_DontUseNativeMenuBar, 'CALIBRE_NO_NATIVE_MENUBAR' in os.environ)
         self.setup_styles(force_calibre_style)
         self.setup_ui_font()
         if not self.using_calibre_style and self.style().objectName() == 'fusion':
@@ -969,8 +981,8 @@ class Application(QApplication):
             # same as non highlighted colors. This is a regression from Qt 4.
             # https://bugreports.qt-project.org/browse/QTBUG-41060
             p = self.palette()
-            for role in (p.Highlight, p.HighlightedText, p.Base, p.AlternateBase):
-                p.setColor(p.Inactive, role, p.color(p.Active, role))
+            for role in (QPalette.ColorRole.Highlight, QPalette.ColorRole.HighlightedText, QPalette.ColorRole.Base, QPalette.ColorRole.AlternateBase):
+                p.setColor(QPalette.ColorGroup.Inactive, role, p.color(QPalette.ColorGroup.Active, role))
             self.setPalette(p)
 
             # Prevent text copied to the clipboard from being lost on quit due to
@@ -993,6 +1005,11 @@ class Application(QApplication):
 
     def ensure_window_on_screen(self, widget):
         screen_rect = self.desktop().availableGeometry(widget)
+        g = widget.geometry()
+        w = min(screen_rect.width(), g.width())
+        h = min(screen_rect.height(), g.height())
+        if w != g.width() or h != g.height():
+            widget.resize(w, h)
         if not widget.geometry().intersects(screen_rect):
             w = min(widget.width(), screen_rect.width() - 10)
             h = min(widget.height(), screen_rect.height() - 10)
@@ -1067,7 +1084,7 @@ class Application(QApplication):
         # Workaround for https://bugreports.qt.io/browse/QTBUG-75321
         # Buttontext is set to black for some reason
         pal = QPalette(self.palette())
-        pal.setColor(pal.ButtonText, pal.color(pal.WindowText))
+        pal.setColor(QPalette.ColorRole.ButtonText, pal.color(QPalette.ColorRole.WindowText))
         self.ignore_palette_changes = True
         self.setPalette(pal, 'QComboBox')
         self.ignore_palette_changes = False
@@ -1079,7 +1096,7 @@ class Application(QApplication):
         # appearance is changed. And it has to be after current event
         # processing finishes as of Qt 5.14 otherwise the palette change is
         # ignored.
-        QTimer.singleShot(1000, lambda: QApplication.instance().setAttribute(Qt.AA_SetPalette, False))
+        QTimer.singleShot(1000, lambda: QApplication.instance().setAttribute(Qt.ApplicationAttribute.AA_SetPalette, False))
         self.ignore_palette_changes = False
 
     def on_palette_change(self):
@@ -1135,8 +1152,8 @@ class Application(QApplication):
         if ismacos:
             from calibre_extensions.cocoa import transient_scroller
             transient_scroller = transient_scroller()
-        icon_map[QStyle.SP_CustomBase + 1] = I('close-for-light-theme.png')
-        icon_map[QStyle.SP_CustomBase + 2] = I('close-for-dark-theme.png')
+        icon_map[QStyle.StandardPixmap.SP_CustomBase + 1] = I('close-for-light-theme.png')
+        icon_map[QStyle.StandardPixmap.SP_CustomBase + 2] = I('close-for-dark-theme.png')
         self.pi.load_style(icon_map, transient_scroller)
 
     def _send_file_open_events(self):
@@ -1152,7 +1169,13 @@ class Application(QApplication):
         self.installTranslator(self._translator)
 
     def event(self, e):
-        if callable(self.file_event_hook) and e.type() == QEvent.FileOpen:
+        if callable(self.file_event_hook) and e.type() == QEvent.Type.FileOpen:
+            url = e.url().toString(QUrl.ComponentFormattingOption.FullyEncoded)
+            if url and url.startswith('calibre://'):
+                with self._file_open_lock:
+                    self._file_open_paths.append(url)
+                QTimer.singleShot(1000, self._send_file_open_events)
+                return True
             path = unicode_type(e.file())
             if os.access(path, os.R_OK):
                 with self._file_open_lock:
@@ -1164,14 +1187,14 @@ class Application(QApplication):
 
     @property
     def current_custom_colors(self):
-        from PyQt5.Qt import QColorDialog
+        from qt.core import QColorDialog
 
         return [col.getRgb() for col in
                     (QColorDialog.customColor(i) for i in range(QColorDialog.customCount()))]
 
     @current_custom_colors.setter
     def current_custom_colors(self, colors):
-        from PyQt5.Qt import QColorDialog
+        from qt.core import QColorDialog
         num = min(len(colors), QColorDialog.customCount())
         for i in range(num):
             QColorDialog.setCustomColor(i, QColor(*colors[i]))
@@ -1196,10 +1219,10 @@ class Application(QApplication):
     def setup_unix_signals(self):
         setup_unix_signals(self)
 
-    def signal_received(self, read_fd):
+    def signal_received(self):
         try:
-            os.read(read_fd, 1024)
-        except EnvironmentError:
+            os.read(int(self.signal_notifier.socket()), 1024)
+        except OSError:
             return
         self.shutdown_signal_received.emit()
 
@@ -1307,7 +1330,7 @@ def ensure_app(headless=True):
                 if ismacos:
                     os.environ['QT_MAC_DISABLE_FOREGROUND_APPLICATION_TRANSFORM'] = '1'
             if headless and iswindows:
-                QApplication.setAttribute(Qt.AA_UseSoftwareOpenGL, True)
+                QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseSoftwareOpenGL, True)
             _store_app = QApplication(args)
             if headless and has_headless:
                 _store_app.headless = True
@@ -1379,8 +1402,10 @@ def elided_text(text, font=None, width=300, pos='middle'):
     rendered, replacing characters from the left, middle or right (as per pos)
     of the string with an ellipsis. Results in a string much closer to the
     limit than Qt's elidedText().'''
-    from PyQt5.Qt import QFontMetrics, QApplication
-    fm = QApplication.fontMetrics() if font is None else (font if isinstance(font, QFontMetrics) else QFontMetrics(font))
+    from qt.core import QFontMetrics, QApplication
+    if font is None:
+        font = QApplication.instance().font()
+    fm = (font if isinstance(font, QFontMetrics) else QFontMetrics(font))
     delta = 4
     ellipsis = '\u2026'
 
@@ -1460,7 +1485,6 @@ if is_running_from_develop:
 
 
 def event_type_name(ev_or_etype):
-    from PyQt5.QtCore import QEvent
     etype = ev_or_etype.type() if isinstance(ev_or_etype, QEvent) else ev_or_etype
     for name, num in iteritems(vars(QEvent)):
         if num == etype:
@@ -1497,15 +1521,15 @@ def add_to_recent_docs(path):
 
 
 def windows_is_system_dark_mode_enabled():
-    s = QSettings(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", QSettings.NativeFormat)
-    if s.status() == QSettings.NoError:
+    s = QSettings(r"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", QSettings.Format.NativeFormat)
+    if s.status() == QSettings.Status.NoError:
         return s.value("AppsUseLightTheme") == 0
     return False
 
 
 def make_view_use_window_background(view):
     p = view.palette()
-    p.setColor(p.Base, p.color(p.Window))
-    p.setColor(p.AlternateBase, p.color(p.Window))
+    p.setColor(QPalette.ColorRole.Base, p.color(QPalette.ColorRole.Window))
+    p.setColor(QPalette.ColorRole.AlternateBase, p.color(QPalette.ColorRole.Window))
     view.setPalette(p)
     return view

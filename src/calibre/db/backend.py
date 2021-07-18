@@ -7,40 +7,53 @@ __copyright__ = '2011, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 # Imports {{{
-import os, shutil, uuid, json, glob, time, hashlib, errno, sys
+import apsw
+import errno
+import glob
+import hashlib
+import json
+import os
+import shutil
+import sys
+import time
+import uuid
 from functools import partial
 
-import apsw
-from polyglot.builtins import (iteritems, itervalues,
-        unicode_type, reraise, string_or_bytes, cmp, native_string_type)
-
-from calibre import isbytestring, force_unicode, prints, as_unicode
-from calibre.constants import (iswindows, filesystem_encoding,
-        preferred_encoding)
-from calibre.ptempfile import PersistentTemporaryFile, TemporaryFile
+from calibre import as_unicode, force_unicode, isbytestring, prints
+from calibre.constants import (
+    filesystem_encoding, iswindows, plugins, preferred_encoding
+)
 from calibre.db import SPOOL_SIZE
-from calibre.db.annotations import annot_db_data
-from calibre.db.schema_upgrades import SchemaUpgrade
+from calibre.db.annotations import annot_db_data, unicode_normalize
 from calibre.db.delete_service import delete_service
 from calibre.db.errors import NoSuchFormat
+from calibre.db.schema_upgrades import SchemaUpgrade
+from calibre.db.tables import (
+    AuthorsTable, CompositeTable, FormatsTable, IdentifiersTable, ManyToManyTable,
+    ManyToOneTable, OneToOneTable, PathTable, RatingTable, SizeTable, UUIDTable
+)
+from calibre.ebooks.metadata import author_to_author_sort, title_sort
 from calibre.library.field_metadata import FieldMetadata
-from calibre.ebooks.metadata import title_sort, author_to_author_sort
+from calibre.ptempfile import PersistentTemporaryFile, TemporaryFile
 from calibre.utils import pickle_binary_string, unpickle_binary_string
-from calibre.utils.icu import sort_key
-from calibre.utils.config import to_json, from_json, prefs, tweaks
-from calibre.utils.date import utcfromtimestamp, parse_date, utcnow, EPOCH
+from calibre.utils.config import from_json, prefs, to_json, tweaks
+from calibre.utils.date import EPOCH, parse_date, utcfromtimestamp, utcnow
 from calibre.utils.filenames import (
-    is_case_sensitive, samefile, hardlink_file, ascii_filename,
-    WindowsAtomicFolderMove, atomic_rename, remove_dir_if_empty,
-    copytree_using_links, copyfile_using_links)
+    WindowsAtomicFolderMove, ascii_filename, atomic_rename, copyfile_using_links,
+    copytree_using_links, hardlink_file, is_case_sensitive, remove_dir_if_empty,
+    samefile
+)
+from calibre.utils.formatter_functions import (
+    compile_user_template_functions, formatter_functions,
+    load_user_template_functions, unload_user_template_functions
+)
+from calibre.utils.icu import sort_key
 from calibre.utils.img import save_cover_data_to
-from calibre.utils.formatter_functions import (load_user_template_functions,
-            unload_user_template_functions,
-            compile_user_template_functions,
-            formatter_functions)
-from calibre.db.tables import (OneToOneTable, ManyToOneTable, ManyToManyTable,
-        SizeTable, FormatsTable, AuthorsTable, IdentifiersTable, PathTable,
-        CompositeTable, UUIDTable, RatingTable)
+from polyglot.builtins import (
+    cmp, iteritems, itervalues, native_string_type, reraise, string_or_bytes,
+    unicode_type
+)
+
 # }}}
 
 
@@ -322,7 +335,11 @@ class Connection(apsw.Connection):  # {{{
     BUSY_TIMEOUT = 10000  # milliseconds
 
     def __init__(self, path):
-        apsw.Connection.__init__(self, path)
+        from calibre.utils.localization import get_lang
+        from calibre_extensions.sqlite_extension import set_ui_language
+        set_ui_language(get_lang())
+        super().__init__(path)
+        plugins.load_apsw_extension(self, 'sqlite_extension')
 
         self.setbusytimeout(self.BUSY_TIMEOUT)
         self.execute('pragma cache_size=-5000')
@@ -420,7 +437,7 @@ class DB(object):
 
         if iswindows and len(self.library_path) + 4*self.PATH_LIMIT + 10 > 259:
             raise ValueError(_(
-                'Path to library ({0}) too long. Must be less than'
+                'Path to library ({0}) too long. It must be less than'
                 ' {1} characters.').format(self.library_path, 259-4*self.PATH_LIMIT-10))
         exists = self._exists = os.path.exists(self.dbpath)
         if not exists:
@@ -428,7 +445,7 @@ class DB(object):
             # allowed for max path lengths of 265 chars.
             if (iswindows and len(self.library_path) > self.WINDOWS_LIBRARY_PATH_LIMIT):
                 raise ValueError(_(
-                    'Path to library too long. Must be less than'
+                    'Path to library too long. It must be less than'
                     ' %d characters.')%self.WINDOWS_LIBRARY_PATH_LIMIT)
 
         if read_only and os.path.exists(self.dbpath):
@@ -491,7 +508,7 @@ class DB(object):
 
     def set_user_template_functions(self, user_formatter_functions):
         self._user_template_functions = user_formatter_functions
-        self._template_functions = formatter_functions().get_builtins().copy()
+        self._template_functions = formatter_functions().get_builtins_and_aliases().copy()
         self._template_functions.update(user_formatter_functions)
 
     def initialize_prefs(self, default_prefs, restore_all_prefs, progress_callback):  # {{{
@@ -1338,7 +1355,12 @@ class DB(object):
         except:  # If path contains strange characters this throws an exc
             candidates = []
         if fmt and candidates and os.path.exists(candidates[0]):
-            shutil.copyfile(candidates[0], fmt_path)
+            try:
+                shutil.copyfile(candidates[0], fmt_path)
+            except shutil.SameFileError:
+                # some other process synced in the file since the last
+                # os.path.exists()
+                return candidates[0]
             return fmt_path
 
     def cover_abspath(self, book_id, path):
@@ -1468,6 +1490,21 @@ class DB(object):
         f = lopen(path, 'rb')
         with f:
             return True, f.read(), stat.st_mtime
+
+    def compress_covers(self, path_map, jpeg_quality, progress_callback):
+        cpath_map = {}
+        if not progress_callback:
+            progress_callback = lambda book_id, old_sz, new_sz: None
+        for book_id, path in path_map.items():
+            path = os.path.abspath(os.path.join(self.library_path, path, 'cover.jpg'))
+            try:
+                sz = os.path.getsize(path)
+            except OSError:
+                progress_callback(book_id, 0, 'ENOENT')
+            else:
+                cpath_map[book_id] = (path, sz)
+        from calibre.db.covers import compress_covers
+        compress_covers(cpath_map, jpeg_quality, progress_callback)
 
     def set_cover(self, book_id, path, data, no_processing=False):
         path = os.path.abspath(os.path.join(self.library_path, path))
@@ -1781,6 +1818,7 @@ class DB(object):
         fts_engine_query, use_stemming, highlight_start, highlight_end, snippet_size, annotation_type,
         restrict_to_book_ids, restrict_to_user, ignore_removed=False
     ):
+        fts_engine_query = unicode_normalize(fts_engine_query)
         fts_table = 'annotations_fts_stemmed' if use_stemming else 'annotations_fts'
         text = 'annotations.searchable_text'
         if highlight_start is not None and highlight_end is not None:
@@ -1827,7 +1865,7 @@ class DB(object):
 
     def all_annotations_for_book(self, book_id, ignore_removed=False):
         for (fmt, user_type, user, data) in self.execute(
-            'SELECT id, book, format, user_type, user, annot_data FROM annotations WHERE book=?', (book_id,)
+            'SELECT format, user_type, user, annot_data FROM annotations WHERE book=?', (book_id,)
         ):
             try:
                 annot = json.loads(data)
@@ -1955,6 +1993,12 @@ class DB(object):
                  ''', (book_id,)):
             return count
         return 0
+
+    def reindex_annotations(self):
+        self.execute('''
+            INSERT INTO {0}({0}) VALUES('rebuild');
+            INSERT INTO {1}({1}) VALUES('rebuild');
+        '''.format('annotations_fts', 'annotations_fts_stemmed'))
 
     def conversion_options(self, book_id, fmt):
         for (data,) in self.conn.get('SELECT data FROM conversion_options WHERE book=? AND format=?', (book_id, fmt.upper())):

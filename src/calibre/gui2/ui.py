@@ -10,7 +10,6 @@ __docformat__ = 'restructuredtext en'
 '''The main GUI'''
 
 import apsw
-import collections
 import errno
 import gc
 import os
@@ -18,9 +17,9 @@ import re
 import sys
 import textwrap
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from io import BytesIO
-from PyQt5.Qt import (
+from qt.core import (
     QAction, QApplication, QDialog, QFont, QIcon, QMenu, QSystemTrayIcon, Qt, QTimer,
     QUrl, pyqtSignal
 )
@@ -29,6 +28,7 @@ from calibre import detect_ncpus, force_unicode, prints
 from calibre.constants import (
     DEBUG, __appname__, config_dir, filesystem_encoding, ismacos, iswindows
 )
+from calibre.customize import PluginInstallationType
 from calibre.customize.ui import available_store_plugins, interface_actions
 from calibre.db.legacy import LibraryDatabase
 from calibre.gui2 import (
@@ -38,7 +38,6 @@ from calibre.gui2 import (
 from calibre.gui2.auto_add import AutoAdder
 from calibre.gui2.changes import handle_changes
 from calibre.gui2.cover_flow import CoverFlowMixin
-from calibre.gui2.dbus_export.widgets import factory
 from calibre.gui2.device import DeviceMixin
 from calibre.gui2.dialogs.message_box import JobError
 from calibre.gui2.ebook_download import EbookDownloadMixin
@@ -58,7 +57,7 @@ from calibre.gui2.tag_browser.ui import TagBrowserMixin
 from calibre.gui2.update import UpdateMixin
 from calibre.gui2.widgets import ProgressIndicator
 from calibre.library import current_library_name
-from calibre.srv.library_broker import GuiLibraryBroker
+from calibre.srv.library_broker import GuiLibraryBroker, db_matches
 from calibre.utils.config import dynamic, prefs
 from calibre.utils.ipc.pool import Pool
 from polyglot.builtins import string_or_bytes, unicode_type
@@ -117,7 +116,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         self.setWindowIcon(QApplication.instance().windowIcon())
         self.jobs_pointer = Pointer(self)
         self.proceed_requested.connect(self.do_proceed,
-                type=Qt.QueuedConnection)
+                type=Qt.ConnectionType.QueuedConnection)
         self.proceed_question = ProceedQuestion(self)
         self.job_error_dialog = JobError(self)
         self.keyboard = Manager(self)
@@ -128,7 +127,8 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         self.iactions = OrderedDict()
         # Actions
         for action in interface_actions():
-            if opts.ignore_plugins and action.plugin_path is not None:
+            if opts.ignore_plugins \
+                    and action.installation_type is not PluginInstallationType.BUILTIN:
                 continue
             try:
                 ac = self.init_iaction(action)
@@ -140,7 +140,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 except Exception:
                     if action.plugin_path:
                         print('Failed to load Interface Action plugin:', action.plugin_path, file=sys.stderr)
-                if action.plugin_path is None:
+                if action.installation_type is PluginInstallationType.BUILTIN:
                     raise
                 continue
             ac.plugin_path = action.plugin_path
@@ -152,6 +152,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         ac = action.load_actual_plugin(self)
         ac.plugin_path = action.plugin_path
         ac.interface_action_base_plugin = action
+        ac.installation_type = action.installation_type
         action.actual_iaction_plugin_loaded = True
         return ac
 
@@ -167,7 +168,8 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         from calibre.gui2.store.loader import Stores
         self.istores = Stores()
         for store in available_store_plugins():
-            if self.opts.ignore_plugins and store.plugin_path is not None:
+            if self.opts.ignore_plugins \
+                    and store.installation_type is not PluginInstallationType.BUILTIN:
                 continue
             try:
                 st = self.init_istore(store)
@@ -176,7 +178,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 # Ignore errors in loading user supplied plugins
                 import traceback
                 traceback.print_exc()
-                if store.plugin_path is None:
+                if store.installation_type is PluginInstallationType.BUILTIN:
                     raise
                 continue
         self.istores.builtins_loaded()
@@ -184,6 +186,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
     def init_istore(self, store):
         st = store.load_actual_plugin(self)
         st.plugin_path = store.plugin_path
+        st.installation_type = store.installation_type
         st.base_plugin = store
         store.actual_istore_plugin_loaded = True
         return st
@@ -215,7 +218,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 # Ignore errors in third party plugins
                 import traceback
                 traceback.print_exc()
-                if getattr(ac, 'plugin_path', None) is None:
+                if getattr(ac, 'installation_type', None) is PluginInstallationType.BUILTIN:
                     raise
         self.donate_action = QAction(QIcon(I('donate.png')),
                 _('&Donate to support calibre'), self)
@@ -241,12 +244,11 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         self.metadata_dialogs = []
         self.default_thumbnail = None
         self.tb_wrapper = textwrap.TextWrapper(width=40)
-        self.viewers = collections.deque()
+        self.viewers = deque()
         self.system_tray_icon = None
         do_systray = config['systray_icon'] or opts.start_in_tray
-        if do_systray:
-            self.system_tray_icon = factory(app_id='com.calibre-ebook.gui').create_system_tray_icon(parent=self, title='calibre')
-        if self.system_tray_icon is not None:
+        if do_systray and QSystemTrayIcon.isSystemTrayAvailable():
+            self.system_tray_icon = QSystemTrayIcon(self)
             self.system_tray_icon.setIcon(QIcon(I('lt.png', allow_user_override=False)))
             if not (iswindows or ismacos):
                 self.system_tray_icon.setIcon(QIcon.fromTheme('calibre-tray', self.system_tray_icon.icon()))
@@ -255,7 +257,8 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
             self.jobs_button.tray_tooltip_updated.connect(self.system_tray_icon.setToolTip)
         elif do_systray:
             prints('Failed to create system tray icon, your desktop environment probably'
-                   ' does not support the StatusNotifier spec https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/')
+                   ' does not support the StatusNotifier spec https://www.freedesktop.org/wiki/Specifications/StatusNotifierItem/',
+                   file=sys.stderr, flush=True)
         self.system_tray_menu = QMenu(self)
         self.toggle_to_tray_action = self.system_tray_menu.addAction(QIcon(I('page.png')), '')
         self.toggle_to_tray_action.triggered.connect(self.system_tray_icon_activated)
@@ -343,11 +346,11 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         self.library_view.model().count_changed()
         self.bars_manager.database_changed(self.library_view.model().db)
         self.library_view.model().database_changed.connect(self.bars_manager.database_changed,
-                type=Qt.QueuedConnection)
+                type=Qt.ConnectionType.QueuedConnection)
 
         # ########################## Tags Browser ##############################
         TagBrowserMixin.init_tag_browser_mixin(self, db)
-        self.library_view.model().database_changed.connect(self.populate_tb_manage_menu, type=Qt.QueuedConnection)
+        self.library_view.model().database_changed.connect(self.populate_tb_manage_menu, type=Qt.ConnectionType.QueuedConnection)
 
         # ######################## Search Restriction ##########################
         if db.new_api.pref('virtual_lib_on_startup'):
@@ -370,7 +373,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
             except:
                 import traceback
                 traceback.print_exc()
-                if ac.plugin_path is None:
+                if ac.installation_type is PluginInstallationType.BUILTIN:
                     raise
 
         if config['autolaunch_server']:
@@ -390,7 +393,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
             except:
                 import traceback
                 traceback.print_exc()
-                if ac.plugin_path is None:
+                if ac.installation_type is PluginInstallationType.BUILTIN:
                     raise
         self.set_current_library_information(current_library_name(), db.library_id,
                                              db.field_metadata)
@@ -430,7 +433,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 prints('Starting QuickView')
             qv.qv_button.restore_state()
         self.save_layout_state()
-        self.library_view.setFocus(Qt.OtherFocusReason)
+        self.focus_library_view()
 
     def show_gui_debug_msg(self):
         info_dialog(self, _('Debug mode'), '<p>' +
@@ -442,12 +445,20 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
     def esc(self, *args):
         self.search.clear()
 
-    def shift_esc(self):
-        self.current_view().setFocus(Qt.OtherFocusReason)
+    def focus_current_view(self):
+        view = self.current_view()
+        if view is self.library_view:
+            self.focus_library_view()
+        else:
+            view.setFocus(Qt.FocusReason.OtherFocusReason)
+    shift_esc = focus_current_view
+
+    def focus_library_view(self):
+        self.library_view.alternate_views.current_view.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def ctrl_esc(self):
         self.apply_virtual_library()
-        self.current_view().setFocus(Qt.OtherFocusReason)
+        self.focus_current_view()
 
     def start_smartdevice(self):
         message = None
@@ -476,7 +487,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 except EnvironmentError:
                     pass
                 warning_dialog(self, _('Content server changed!'), _(
-                    'calibre 3 comes with a completely re-written content server.'
+                    'calibre 3 comes with a completely re-written Content server.'
                     ' As such any custom configuration you have for the content'
                     ' server no longer applies. You should check and refresh your'
                     ' settings in Preferences->Sharing->Sharing over the net'), show=True)
@@ -537,7 +548,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         pass
 
     def system_tray_icon_activated(self, r=False):
-        if r in (QSystemTrayIcon.Trigger, QSystemTrayIcon.MiddleClick, False):
+        if r in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.MiddleClick, False):
             if self.isVisible():
                 if self.isMinimized():
                     self.showNormal()
@@ -653,7 +664,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
         if action == 'switch-library':
             library_id = decode_library_id(posixpath.basename(path))
             library_path = self.library_broker.path_for_library_id(library_id)
-            if library_path is not None and library_id != getattr(self.current_db.new_api, 'server_library_id', None):
+            if not db_matches(self.current_db, library_id, library_path):
                 self.library_moved(library_path)
         elif action == 'show-book':
             parts = tuple(filter(None, path.split('/')))
@@ -671,14 +682,14 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 return
 
             def doit():
-                self.library_view.select_rows((book_id,))
+                rows = self.library_view.select_rows((book_id,))
+                db = self.current_db
+                if not rows and (db.data.get_base_restriction_name() or db.data.get_search_restriction_name()):
+                    self.apply_virtual_library()
+                    self.apply_named_search_restriction()
+                    self.library_view.select_rows((book_id,))
 
-            if library_id != getattr(self.current_db.new_api, 'server_library_id', None):
-                self.library_moved(library_path)
-                QTimer.singleShot(0, doit)
-            else:
-                doit()
-
+            self.perform_url_action(library_id, library_path, doit)
         elif action == 'view-book':
             parts = tuple(filter(None, path.split('/')))
             if len(parts) != 3:
@@ -701,12 +712,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                     at = at[0]
                 view.view_format_by_id(book_id, fmt.upper(), open_at=at)
 
-            if library_id != getattr(self.current_db.new_api, 'server_library_id', None):
-                self.library_moved(library_path)
-                QTimer.singleShot(0, doit)
-            else:
-                doit()
-
+            self.perform_url_action(library_id, library_path, doit)
         elif action == 'search':
             parts = tuple(filter(None, path.split('/')))
             if len(parts) != 1:
@@ -723,7 +729,26 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 if sq:
                     sq = sq[0]
             sq = sq or ''
-            self.search.set_search_string(sq)
+            vl = None
+            if query.get('encoded_virtual_library'):
+                vl = bytes.fromhex(query.get('encoded_virtual_library')[0]).decode('utf-8')
+            elif query.get('virtual_library'):
+                vl = query.get('virtual_library')[0]
+            if vl == '-':
+                vl = None
+
+            def doit():
+                if vl != '_':
+                    self.apply_virtual_library(vl)
+                self.search.set_search_string(sq)
+            self.perform_url_action(library_id, library_path, doit)
+
+    def perform_url_action(self, library_id, library_path, func):
+        if not db_matches(self.current_db, library_id, library_path):
+            self.library_moved(library_path)
+            QTimer.singleShot(0, func)
+        else:
+            func()
 
     def message_from_another_instance(self, msg):
         if isinstance(msg, bytes):
@@ -742,7 +767,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 argv = ()
             if isinstance(argv, (list, tuple)) and len(argv) > 1:
                 self.handle_cli_args(argv[1:])
-            self.setWindowState(self.windowState() & ~Qt.WindowMinimized|Qt.WindowActive)
+            self.setWindowState(self.windowState() & ~Qt.WindowState.WindowMinimized|Qt.WindowState.WindowActive)
             self.show_windows()
             self.raise_()
             self.activateWindow()
@@ -793,6 +818,9 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
             return self.card_a_view
         if idx == 3:
             return self.card_b_view
+
+    def show_library_view(self):
+        self.location_manager.library_action.trigger()
 
     def booklists(self):
         return self.memory_view.model().db, self.card_a_view.model().db, self.card_b_view.model().db
@@ -882,7 +910,7 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
             font.setBold(True)
             font.setItalic(True)
         self.virtual_library.setFont(font)
-        title = '{0} - || {1}{2} ||'.format(
+        title = '{0} — || {1}{2} ||'.format(
                 __appname__, self.iactions['Choose Library'].library_name(), restrictions)
         self.setWindowTitle(title)
 
@@ -942,12 +970,12 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
                 splitting fails.
                 <p>You can <b>work around the problem</b> by either increasing the
                 maximum split size under <i>EPUB output</i> in the conversion dialog,
-                or by turning on Heuristic Processing, also in the conversion
+                or by turning on Heuristic processing, also in the conversion
                 dialog. Note that if you make the maximum split size too large,
                 your e-book reader may have trouble with the EPUB.
                         ''')
                 if not minz:
-                    d = error_dialog(self, _('Conversion Failed'), msg,
+                    d = error_dialog(self, _('Conversion failed'), msg,
                             det_msg=job.details)
                     d.setModal(False)
                     d.show()
@@ -1062,8 +1090,8 @@ class Main(MainWindow, MainWindowMixin, DeviceMixin, EmailMixin,  # {{{
 
         from calibre.db.delete_service import has_jobs
         if has_jobs():
-            msg = _('Some deleted books are still being moved to the Recycle '
-                    'Bin, if you quit now, they will be left behind. Are you '
+            msg = _('Some deleted books are still being moved to the recycle '
+                    'bin, if you quit now, they will be left behind. Are you '
                     'sure you want to quit?')
             if not question_dialog(self, _('Active jobs'), msg):
                 return False

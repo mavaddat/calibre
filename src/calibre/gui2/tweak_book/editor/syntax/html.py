@@ -8,7 +8,7 @@ __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 import re
 from collections import namedtuple
 from functools import partial
-from PyQt5.Qt import QFont, QTextBlockUserData, QTextCharFormat
+from qt.core import QFont, QTextBlockUserData, QTextCharFormat
 
 from calibre.ebooks.oeb.polish.spell import html_spell_tags, patterns, xml_spell_tags
 from calibre.gui2.tweak_book import dictionaries, tprefs, verify_link
@@ -218,7 +218,7 @@ def process_text(state, text, nbsp_format, spell_format, user_data):
     if state.is_bold or state.is_italic:
         fmt = syntax_text_char_format()
         if state.is_bold:
-            fmt.setFontWeight(QFont.Bold)
+            fmt.setFontWeight(QFont.Weight.Bold)
         if state.is_italic:
             fmt.setFontItalic(True)
     last = 0
@@ -478,12 +478,13 @@ def create_formats(highlighter, add_css=True):
         f = formats[name] = syntax_text_char_format(formats['error'])
         f.setToolTip(msg)
     f = formats['title'] = syntax_text_char_format()
-    f.setFontWeight(QFont.Bold)
+    f.setFontWeight(QFont.Weight.Bold)
     if add_css:
         formats['css_sub_formats'] = create_css_formats(highlighter)
     formats['spell'].setProperty(SPELL_PROPERTY, True)
     formats['class_attr'] = syntax_text_char_format(t['Special'])
     formats['class_attr'].setProperty(CLASS_ATTRIBUTE_PROPERTY, True)
+    formats['class_attr'].setToolTip(_('Hold down the Ctrl key and click to open the first matching CSS style rule'))
     formats['link'] = syntax_text_char_format(t['Link'])
     formats['link'].setProperty(LINK_PROPERTY, True)
     formats['link'].setToolTip(_('Hold down the Ctrl key and click to open this link'))
@@ -521,7 +522,7 @@ class XMLHighlighter(Highlighter):
 
 def profile():
     import sys
-    from PyQt5.Qt import QTextDocument
+    from qt.core import QTextDocument
 
     from calibre.gui2 import Application
     from calibre.gui2.tweak_book import set_book_locale

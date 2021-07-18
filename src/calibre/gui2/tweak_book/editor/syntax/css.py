@@ -7,7 +7,7 @@ __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import re
 
-from PyQt5.Qt import QTextBlockUserData
+from qt.core import QTextBlockUserData
 
 from calibre.gui2.tweak_book import verify_link
 from calibre.gui2.tweak_book.editor import syntax_text_char_format, LINK_PROPERTY, CSS_PROPERTY
@@ -22,7 +22,7 @@ sheet_tokens = [(re.compile(k), v, n) for k, v, n in [
     (r'\#[a-zA-Z0-9_-]+', 'id_selector', 'id-selector'),
     (r'@[a-zA-Z0-9_-]+', 'preproc', 'atrule'),
     (r'[a-zA-Z0-9_-]+', 'tag', 'tag'),
-    (r'[~\^\*!%&\[\]\(\)<>\|+=@:;,./?-]', 'operator', 'operator'),
+    (r'[\$~\^\*!%&\[\]\(\)<>\|+=@:;,./?-]', 'operator', 'operator'),
 ]]
 
 URL_TOKEN = 'url'

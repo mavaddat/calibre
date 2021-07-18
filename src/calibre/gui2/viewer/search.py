@@ -5,17 +5,18 @@
 import json
 import regex
 from collections import Counter, OrderedDict
-from PyQt5.Qt import (
+from html import escape
+from qt.core import (
     QCheckBox, QComboBox, QFont, QHBoxLayout, QIcon, QLabel, Qt, QToolButton,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, pyqtSignal
 )
 from threading import Thread
-from html import escape
 
 from calibre.ebooks.conversion.search_replace import REGEX_FLAGS
 from calibre.gui2 import warning_dialog
 from calibre.gui2.progress_indicator import ProgressIndicator
-from calibre.gui2.viewer.web_view import get_data, get_manifest, vprefs
+from calibre.gui2.viewer.config import vprefs
+from calibre.gui2.viewer.web_view import get_data, get_manifest
 from calibre.gui2.viewer.widgets import ResultsDelegate, SearchBox
 from polyglot.builtins import iteritems, map, unicode_type
 from polyglot.functools import lru_cache
@@ -51,6 +52,9 @@ quote_map= {'"':'"“”', "'": "'‘’"}
 qpat = regex.compile(r'''(['"])''')
 spat = regex.compile(r'(\s+)')
 invisible_chars = '(?:[\u00ad\u200c\u200d]{0,1})'
+SEARCH_RESULT_ROLE = Qt.ItemDataRole.UserRole
+RESULT_NUMBER_ROLE = SEARCH_RESULT_ROLE + 1
+SPINE_IDX_ROLE = RESULT_NUMBER_ROLE + 1
 
 
 def text_to_regex(text):
@@ -120,16 +124,18 @@ class SearchFinished(object):
         self.search_query = search_query
 
 
-class SearchResult(object):
+class SearchResult:
 
     __slots__ = (
         'search_query', 'before', 'text', 'after', 'q', 'spine_idx',
-        'index', 'file_name', 'is_hidden', 'offset', 'toc_nodes'
+        'index', 'file_name', 'is_hidden', 'offset', 'toc_nodes',
+        'result_num'
     )
 
-    def __init__(self, search_query, before, text, after, q, name, spine_idx, index, offset):
+    def __init__(self, search_query, before, text, after, q, name, spine_idx, index, offset, result_num):
         self.search_query = search_query
         self.q = q
+        self.result_num = result_num
         self.before, self.text, self.after = before, text, after
         self.spine_idx, self.index = spine_idx, index
         self.file_name = name
@@ -146,7 +152,8 @@ class SearchResult(object):
     def for_js(self):
         return {
             'file_name': self.file_name, 'spine_idx': self.spine_idx, 'index': self.index, 'text': self.text,
-            'before': self.before, 'after': self.after, 'mode': self.search_query.mode, 'q': self.q
+            'before': self.before, 'after': self.after, 'mode': self.search_query.mode, 'q': self.q,
+            'result_num': self.result_num
         }
 
     def is_result(self, result_from_js):
@@ -202,6 +209,7 @@ def get_toc_data():
     manifest = get_manifest() or {}
     spine = manifest.get('spine') or []
     spine_toc_map = {name: [] for name in spine}
+    parent_map = {}
 
     def process_node(node):
         items = spine_toc_map.get(node['dest'])
@@ -210,6 +218,7 @@ def get_toc_data():
         children = node.get('children')
         if children:
             for child in children:
+                parent_map[id(child)] = node
                 process_node(child)
 
     toc = manifest.get('toc')
@@ -217,28 +226,40 @@ def get_toc_data():
         process_node(toc)
     return {
         'spine': tuple(spine), 'spine_toc_map': spine_toc_map,
-        'spine_idx_map': {name: idx for idx, name in enumerate(spine)}
+        'spine_idx_map': {name: idx for idx, name in enumerate(spine)},
+        'parent_map': parent_map
     }
 
 
-class ToCOffsetMap(object):
+class ToCOffsetMap:
 
-    def __init__(self, toc_nodes=(), offset_map=None, previous_toc_node=None):
+    def __init__(self, toc_nodes=(), offset_map=None, previous_toc_node=None, parent_map=None):
         self.toc_nodes = toc_nodes
         self.offset_map = offset_map or {}
         self.previous_toc_node = previous_toc_node
+        self.parent_map = parent_map or {}
 
     def toc_nodes_for_offset(self, offset):
-        found = False
+        matches = []
         for node in self.toc_nodes:
             q = self.offset_map.get(node.get('id'))
             if q is not None:
                 if q > offset:
                     break
-                yield node
-                found = True
-        if not found and self.previous_toc_node is not None:
-            yield self.previous_toc_node
+                matches.append(node)
+        if not matches and self.previous_toc_node is not None:
+            matches.append(self.previous_toc_node)
+        if matches:
+            ancestors = []
+            node = matches[-1]
+            parent = self.parent_map.get(id(node))
+            while parent is not None:
+                ancestors.append(parent)
+                parent = self.parent_map.get(id(parent))
+            if len(ancestors) > 1:
+                ancestors.pop()  # root node
+                yield from reversed(ancestors)
+            yield node
 
 
 @lru_cache(maxsize=None)
@@ -268,7 +289,7 @@ def toc_offset_map_for_name(name):
         if ptn:
             prev_toc_node = ptn[-1]
             break
-    return ToCOffsetMap(toc_nodes, offset_map, prev_toc_node)
+    return ToCOffsetMap(toc_nodes, offset_map, prev_toc_node, toc_data['parent_map'])
 
 
 def toc_nodes_for_search_result(sr):
@@ -311,20 +332,21 @@ class SearchInput(QWidget):  # {{{
         sb.initialize('viewer-{}-panel-expression'.format(panel_name))
         sb.item_selected.connect(self.saved_search_selected)
         sb.history_saved.connect(self.history_saved)
+        sb.history_cleared.connect(self.history_cleared)
         sb.cleared.connect(self.cleared)
         sb.lineEdit().returnPressed.connect(self.find_next)
         h.addWidget(sb)
 
         self.next_button = nb = QToolButton(self)
         h.addWidget(nb)
-        nb.setFocusPolicy(Qt.NoFocus)
+        nb.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         nb.setIcon(QIcon(I('arrow-down.png')))
         nb.clicked.connect(self.find_next)
         nb.setToolTip(_('Find next match'))
 
         self.prev_button = nb = QToolButton(self)
         h.addWidget(nb)
-        nb.setFocusPolicy(Qt.NoFocus)
+        nb.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         nb.setIcon(QIcon(I('arrow-up.png')))
         nb.clicked.connect(self.find_previous)
         nb.setToolTip(_('Find previous match'))
@@ -333,7 +355,7 @@ class SearchInput(QWidget):  # {{{
         h.setContentsMargins(0, 0, 0, 0)
         l.addLayout(h)
         self.query_type = qt = QComboBox(self)
-        qt.setFocusPolicy(Qt.NoFocus)
+        qt.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         qt.addItem(_('Contains'), 'normal')
         qt.addItem(_('Whole words'), 'word')
         qt.addItem(_('Regex'), 'regex')
@@ -348,7 +370,7 @@ class SearchInput(QWidget):  # {{{
         h.addWidget(qt)
 
         self.case_sensitive = cs = QCheckBox(_('&Case sensitive'), self)
-        cs.setFocusPolicy(Qt.NoFocus)
+        cs.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         cs.setChecked(bool(vprefs.get('viewer-{}-case-sensitive'.format(self.panel_name), False)))
         cs.stateChanged.connect(self.save_search_type)
         h.addWidget(cs)
@@ -366,6 +388,9 @@ class SearchInput(QWidget):  # {{{
             history = frozenset(history)
             sss = {k: v for k, v in iteritems(sss) if k in history}
             vprefs['saved-{}-settings'.format(self.panel_name)] = sss
+
+    def history_cleared(self):
+        vprefs['saved-{}-settings'.format(self.panel_name)] = {}
 
     def save_search_type(self):
         text = self.search_box.currentText()
@@ -413,7 +438,7 @@ class SearchInput(QWidget):  # {{{
     def focus_input(self, text=None):
         if text and hasattr(text, 'rstrip'):
             self.search_box.setText(text)
-        self.search_box.setFocus(Qt.OtherFocusReason)
+        self.search_box.setFocus(Qt.FocusReason.OtherFocusReason)
         le = self.search_box.lineEdit()
         le.end(False)
         le.selectAll()
@@ -429,7 +454,7 @@ class Results(QTreeWidget):  # {{{
     def __init__(self, parent=None):
         QTreeWidget.__init__(self, parent)
         self.setHeaderHidden(True)
-        self.setFocusPolicy(Qt.NoFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.delegate = ResultsDelegate(self)
         self.setItemDelegate(self.delegate)
         self.itemClicked.connect(self.item_activated)
@@ -444,7 +469,7 @@ class Results(QTreeWidget):  # {{{
 
     def current_item_changed(self, current, previous):
         if current is not None:
-            r = current.data(0, Qt.UserRole)
+            r = current.data(0, SEARCH_RESULT_ROLE)
             if isinstance(r, SearchResult):
                 self.current_result_changed.emit(r)
         else:
@@ -461,10 +486,12 @@ class Results(QTreeWidget):  # {{{
                 section_id = -1
         section_key = section_id
         section = self.section_map.get(section_key)
+        spine_idx = getattr(result, 'spine_idx', -1)
         if section is None:
             section = QTreeWidgetItem([section_title], 1)
-            section.setFlags(Qt.ItemIsEnabled)
+            section.setFlags(Qt.ItemFlag.ItemIsEnabled)
             section.setFont(0, self.section_font)
+            section.setData(0, SPINE_IDX_ROLE, spine_idx)
             lines = []
             for i, node in enumerate(toc_nodes):
                 lines.append('\xa0\xa0' * i + '➤ ' + (node.get('title') or _('Unknown')))
@@ -473,27 +500,33 @@ class Results(QTreeWidget):  # {{{
                 tt += '\n' + '\n'.join(lines)
                 section.setToolTip(0, tt)
             self.section_map[section_key] = section
-            self.addTopLevelItem(section)
+            for s in range(self.topLevelItemCount()):
+                ti = self.topLevelItem(s)
+                if ti.data(0, SPINE_IDX_ROLE) > spine_idx:
+                    self.insertTopLevelItem(s, section)
+                    break
+            else:
+                self.addTopLevelItem(section)
             section.setExpanded(True)
         item = QTreeWidgetItem(section, [' '], 2)
-        item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled | Qt.ItemNeverHasChildren)
-        item.setData(0, Qt.UserRole, result)
-        item.setData(0, Qt.UserRole + 1, len(self.search_results))
+        item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemNeverHasChildren)
+        item.setData(0, SEARCH_RESULT_ROLE, result)
+        item.setData(0, RESULT_NUMBER_ROLE, len(self.search_results))
+        item.setData(0, SPINE_IDX_ROLE, spine_idx)
         if isinstance(result, SearchResult):
             tt = '<p>…' + escape(result.before, False) + '<b>' + escape(
                 result.text, False) + '</b>' + escape(result.after, False) + '…'
-            item.setData(0, Qt.ToolTipRole, tt)
+            item.setData(0, Qt.ItemDataRole.ToolTipRole, tt)
         item.setIcon(0, self.blank_icon)
         self.item_map[len(self.search_results)] = item
         self.search_results.append(result)
         n = self.number_of_results
         self.count_changed.emit(n)
-        return n
 
     def item_activated(self):
         i = self.currentItem()
         if i:
-            sr = i.data(0, Qt.UserRole)
+            sr = i.data(0, SEARCH_RESULT_ROLE)
             if isinstance(sr, SearchResult):
                 if not sr.is_hidden:
                     self.show_search_result.emit(sr)
@@ -504,7 +537,7 @@ class Results(QTreeWidget):  # {{{
         item = self.currentItem()
         if item is None:
             return
-        i = int(item.data(0, Qt.UserRole + 1))
+        i = int(item.data(0, RESULT_NUMBER_ROLE))
         i += -1 if previous else 1
         i %= self.number_of_results
         self.setCurrentItem(self.item_map[i])
@@ -513,17 +546,25 @@ class Results(QTreeWidget):  # {{{
     def search_result_not_found(self, sr):
         for i in range(self.number_of_results):
             item = self.item_map[i]
-            r = item.data(0, Qt.UserRole)
+            r = item.data(0, SEARCH_RESULT_ROLE)
             if r.is_result(sr):
                 r.is_hidden = True
                 item.setIcon(0, self.not_found_icon)
                 break
 
+    def search_result_discovered(self, sr):
+        q = sr['result_num']
+        for i in range(self.number_of_results):
+            item = self.item_map[i]
+            r = item.data(0, SEARCH_RESULT_ROLE)
+            if r.result_num == q:
+                self.setCurrentItem(item)
+
     @property
     def current_result_is_hidden(self):
         item = self.currentItem()
         if item is not None:
-            sr = item.data(0, Qt.UserRole)
+            sr = item.data(0, SEARCH_RESULT_ROLE)
             if isinstance(sr, SearchResult) and sr.is_hidden:
                 return True
         return False
@@ -543,6 +584,11 @@ class Results(QTreeWidget):  # {{{
         if self.number_of_results:
             item = self.item_map[0]
             self.setCurrentItem(item)
+
+    def ensure_current_result_visible(self):
+        item = self.currentItem()
+        if item is not None:
+            self.scrollToItem(item)
 # }}}
 
 
@@ -557,6 +603,7 @@ class SearchPanel(QWidget):  # {{{
 
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
+        self.discovery_counter = 0
         self.last_hidden_text_warning = None
         self.current_search = None
         self.anchor_cfi = None
@@ -565,14 +612,14 @@ class SearchPanel(QWidget):  # {{{
         self.search_input = si = SearchInput(self)
         self.searcher = None
         self.search_tasks = Queue()
-        self.results_found.connect(self.on_result_found, type=Qt.QueuedConnection)
+        self.results_found.connect(self.on_result_found, type=Qt.ConnectionType.QueuedConnection)
         si.do_search.connect(self.search_requested)
         si.cleared.connect(self.search_cleared)
         si.go_back.connect(self.go_back)
         l.addWidget(si)
         self.results = r = Results(self)
         r.count_changed.connect(self.count_changed)
-        r.show_search_result.connect(self.do_show_search_result, type=Qt.QueuedConnection)
+        r.show_search_result.connect(self.do_show_search_result, type=Qt.ConnectionType.QueuedConnection)
         r.current_result_changed.connect(self.update_hidden_message)
         l.addWidget(r, 100)
         self.spinner = s = BusySpinner(self)
@@ -612,6 +659,7 @@ class SearchPanel(QWidget):  # {{{
         self.current_search = search_query
         self.last_hidden_text_warning = None
         self.search_tasks.put((search_query, current_name))
+        self.discovery_counter += 1
 
     def set_anchor_cfi(self, pos_data):
         self.anchor_cfi = pos_data['cfi']
@@ -634,14 +682,18 @@ class SearchPanel(QWidget):  # {{{
             if spine_idx < 0:
                 self.results_found.emit(SearchFinished(search_query))
                 continue
-            for name in spine:
+            num_in_spine = len(spine)
+            result_num = 0
+            for n in range(num_in_spine):
+                idx = (spine_idx + n) % num_in_spine
+                name = spine[idx]
                 counter = Counter()
-                spine_idx = idx_map[name]
                 try:
                     for i, result in enumerate(search_in_name(name, search_query)):
                         before, text, after, offset = result
-                        q = (before or '')[-5:] + text + (after or '')[:5]
-                        self.results_found.emit(SearchResult(search_query, before, text, after, q, name, spine_idx, counter[q], offset))
+                        q = (before or '')[-15:] + text + (after or '')[:15]
+                        result_num += 1
+                        self.results_found.emit(SearchResult(search_query, before, text, after, q, name, idx, counter[q], offset, result_num))
                         counter[q] += 1
                 except Exception:
                     import traceback
@@ -653,13 +705,15 @@ class SearchPanel(QWidget):  # {{{
             return
         if isinstance(result, SearchFinished):
             self.spinner.stop()
-            if not self.results.number_of_results:
+            if self.results.number_of_results:
+                self.results.ensure_current_result_visible()
+            else:
                 self.show_no_results_found()
             return
-        if self.results.add_result(result) == 1:
-            # first result
-            self.results.select_first_result()
-            self.results.item_activated()
+        self.results.add_result(result)
+        obj = result.for_js
+        obj['on_discovery'] = self.discovery_counter
+        self.show_search_result.emit(obj)
         self.update_hidden_message()
 
     def visibility_changed(self, visible):
@@ -695,12 +749,15 @@ class SearchPanel(QWidget):  # {{{
         self.results.search_result_not_found(sr)
         self.update_hidden_message()
 
+    def search_result_discovered(self, sr):
+        self.results.search_result_discovered(sr)
+
     def show_no_results_found(self):
         msg = _('No matches were found for:')
         warning_dialog(self, _('No matches found'), msg + '  <b>{}</b>'.format(self.current_search.text), show=True)
 
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Escape:
+        if ev.key() == Qt.Key.Key_Escape:
             self.hide_search_panel.emit()
             ev.accept()
             return

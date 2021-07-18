@@ -148,9 +148,9 @@ def flow_onwheel(evt):
             # Right goes forward, so the sign is correct.
             else:
                 db = dx
-    if di:
+    if Math.abs(di) >= 1:
         scroll_viewport.scroll_by_in_inline_direction(di)
-    elif Math.abs(db) >= 1:
+    if Math.abs(db) >= 1:
         scroll_by_and_check_next_page(db)
 
 @check_for_scroll_end
@@ -244,6 +244,7 @@ def handle_shortcut(sc_name, evt):
 
 
 def layout(is_single_page):
+    add_visibility_listener()
     line_height(True)
     rem_size(True)
     set_css(document.body, margin='0', border_width='0', padding='0')
@@ -258,13 +259,17 @@ def auto_scroll_resume():
     scroll_animator.sync()
 
 
-# Pause auto-scroll while minimized
-document.addEventListener("visibilitychange", def():
-    if (document.visibilityState is 'visible'):
-        scroll_animator.sync()
-    else:
-        scroll_animator.pause()
-)
+def add_visibility_listener():
+    if add_visibility_listener.done:
+        return
+    add_visibility_listener.done = True
+    # Pause auto-scroll while minimized
+    document.addEventListener("visibilitychange", def():
+        if (document.visibilityState is 'visible'):
+            scroll_animator.sync()
+        else:
+            scroll_animator.pause()
+    )
 
 
 def cancel_scroll():
@@ -573,7 +578,8 @@ anchor_funcs = {
         if scroll_viewport.vertical_writing_mode and scroll_viewport.rtl:
             q = -q
 
-        if q < scroll_viewport.block_pos():
+        if q + 1 < scroll_viewport.block_pos():
+            # the + 1 is needed for visibility when top aligned, see: https://bugs.launchpad.net/calibre/+bug/1924890
             return -1
         if q <= scroll_viewport.block_pos() + scroll_viewport.block_size():
             return 0
@@ -624,6 +630,30 @@ def ensure_selection_visible():
         wrap_range(r, wrapper)
         wrapper.scrollIntoView()
         unwrap(wrapper)
+
+
+def ensure_selection_boundary_visible(use_end):
+    sel = window.getSelection()
+    try:
+        rr = sel.getRangeAt(0)
+    except:
+        rr = None
+    if rr:
+        r = rr.getBoundingClientRect()
+        if r:
+            node = sel.focusNode if use_end else sel.anchorNode
+            x = scroll_viewport.rect_inline_end(r) if use_end else scroll_viewport.rect_inline_start(r)
+            if x < 0 or x >= window.innerWidth:
+                x = scroll_viewport.viewport_to_document_inline(x, doc=node.ownerDocument)
+                if use_end:
+                    x -= line_height()
+                scroll_viewport.scroll_to_in_inline_direction(x, True)
+            y = scroll_viewport.rect_block_end(r) if use_end else scroll_viewport.rect_block_start(r)
+            if y < 0 or y >= window.innerHeight:
+                y = scroll_viewport.viewport_to_document_block(y, doc=node.ownerDocument)
+                if use_end:
+                    y -= line_height()
+                scroll_viewport.scroll_to_in_block_direction(y, True)
 
 
 def jump_to_cfi(cfi):

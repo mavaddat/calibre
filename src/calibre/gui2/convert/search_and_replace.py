@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 import codecs, json
 
-from PyQt5.Qt import Qt, QTableWidgetItem
+from qt.core import Qt, QTableWidgetItem
 
 from calibre.gui2.convert.search_and_replace_ui import Ui_Form
 from calibre.gui2.convert import Widget
@@ -48,7 +48,7 @@ class SearchAndReplaceWidget(Widget, Ui_Form):
         self.sr_search.doc_update.connect(self.update_doc)
 
         proto = QTableWidgetItem()
-        proto.setFlags(Qt.ItemFlags(Qt.ItemIsSelectable + Qt.ItemIsEnabled))
+        proto.setFlags(Qt.ItemFlags(Qt.ItemFlag.ItemIsSelectable + Qt.ItemFlag.ItemIsEnabled))
         self.search_replace.setItemPrototype(proto)
         self.search_replace.setColumnCount(2)
         self.search_replace.setColumnWidth(0, 320)

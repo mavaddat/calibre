@@ -10,7 +10,7 @@ import json
 import os
 import time
 from functools import partial
-from PyQt5.Qt import QAction, QIcon, Qt, pyqtSignal
+from qt.core import QAction, QIcon, Qt, pyqtSignal, QDialog
 
 from calibre.constants import ismacos, iswindows
 from calibre.gui2 import (
@@ -22,6 +22,16 @@ from calibre.gui2.dialogs.choose_format import ChooseFormatDialog
 from calibre.ptempfile import PersistentTemporaryFile
 from calibre.utils.config import prefs, tweaks
 from polyglot.builtins import as_bytes, unicode_type
+
+
+def preferred_format(formats):
+    formats = tuple(x.upper() for x in formats if x)
+    fmt = formats[0]
+    for format in prefs['input_format_order']:
+        if format in formats:
+            fmt = format
+            break
+    return fmt
 
 
 class HistoryAction(QAction):
@@ -147,7 +157,7 @@ class ViewAction(InterfaceAction):
         self._view_file(job.result)
 
     def _launch_viewer(self, name=None, viewer='ebook-viewer', internal=True, calibre_book_data=None, open_at=None):
-        self.gui.setCursor(Qt.BusyCursor)
+        self.gui.setCursor(Qt.CursorShape.BusyCursor)
         try:
             if internal:
                 args = [viewer]
@@ -218,7 +228,7 @@ class ViewAction(InterfaceAction):
         d = ChooseFormatDialog(self.gui, _('Choose the format to view'),
                 list(sorted(all_fmts)), show_open_with=True)
         self.gui.book_converted.connect(d.book_converted)
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             formats = [[x.upper() for x in db.new_api.formats(book_id)] for book_id in book_ids]
             fmt = d.format()
             orig_num = len(rows)
@@ -303,19 +313,13 @@ class ViewAction(InterfaceAction):
                 self.update_history([], remove={id_})
                 continue
 
-            formats = db.formats(id_, index_is_id=True)
+            formats = db.new_api.formats(id_, verify_formats=True)
             if not formats:
                 error_dialog(self.gui, _('Cannot view'),
                     _('%s has no available formats.')%(title,), show=True)
                 continue
 
-            formats = formats.upper().split(',')
-
-            fmt = formats[0]
-            for format in prefs['input_format_order']:
-                if format in formats:
-                    fmt = format
-                    break
+            fmt = preferred_format(formats)
             views.append((id_, title))
             self.view_format_by_id(id_, fmt)
 

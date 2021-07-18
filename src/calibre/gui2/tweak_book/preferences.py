@@ -14,11 +14,11 @@ from polyglot.builtins import (
 from itertools import product
 from copy import copy, deepcopy
 
-from PyQt5.Qt import (
+from qt.core import (
     QDialog, QGridLayout, QStackedWidget, QDialogButtonBox, QListWidget,
-    QListWidgetItem, QIcon, QWidget, QSize, QFormLayout, Qt, QSpinBox,
+    QListWidgetItem, QIcon, QWidget, QSize, QFormLayout, Qt, QSpinBox, QListView,
     QCheckBox, pyqtSignal, QDoubleSpinBox, QComboBox, QLabel, QFont, QApplication,
-    QFontComboBox, QPushButton, QSizePolicy, QHBoxLayout, QGroupBox,
+    QFontComboBox, QPushButton, QSizePolicy, QHBoxLayout, QGroupBox, QAbstractItemView,
     QToolButton, QVBoxLayout, QSpacerItem, QTimer, QRadioButton)
 
 from calibre import prepare_string_for_xml
@@ -83,9 +83,9 @@ class BasicSettings(QWidget):  # {{{
 
         def setter(w, val):
             val = {None:none_val}.get(val, val)
-            idx = w.findData(val, flags=Qt.MatchFixedString|Qt.MatchCaseSensitive)
+            idx = w.findData(val, flags=Qt.MatchFlag.MatchFixedString|Qt.MatchFlag.MatchCaseSensitive)
             if idx == -1:
-                idx = w.findData(fallback_val, flags=Qt.MatchFixedString|Qt.MatchCaseSensitive)
+                idx = w.findData(fallback_val, flags=Qt.MatchFlag.MatchFixedString|Qt.MatchFlag.MatchCaseSensitive)
             w.setCurrentIndex(idx)
 
         return self(name, widget=widget, getter=getter, setter=setter, prefs=prefs)
@@ -95,12 +95,12 @@ class BasicSettings(QWidget):  # {{{
         widget = QListWidget(self)
         widget.addItems(prefs.defaults[name])
         widget.setDragEnabled(True)
-        widget.setDragDropMode(widget.InternalMove)
+        widget.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         widget.viewport().setAcceptDrops(True)
         widget.setDropIndicatorShown(True)
         widget.indexesMoved.connect(self.emit_changed)
-        widget.setDefaultDropAction(Qt.MoveAction)
-        widget.setMovement(widget.Snap)
+        widget.setDefaultDropAction(Qt.DropAction.MoveAction)
+        widget.setMovement(QListView.Movement.Snap)
         widget.setSpacing(5)
         widget.defaults = prefs.defaults[name]
 
@@ -116,7 +116,7 @@ class BasicSettings(QWidget):  # {{{
             for x in items:
                 i = QListWidgetItem(w)
                 i.setText(x)
-                i.setFlags(i.flags() | Qt.ItemIsDragEnabled)
+                i.setFlags(i.flags() | Qt.ItemFlag.ItemIsDragEnabled)
 
         return self(name, widget=widget, getter=getter, setter=setter, prefs=prefs)
 
@@ -166,7 +166,7 @@ class EditorSettings(BasicSettings):  # {{{
         fc = FontFamilyChooser(self)
         self('editor_font_family', widget=fc, getter=attrgetter('font_family'), setter=lambda x, val: setattr(x, 'font_family', val))
         fc.family_changed.connect(self.emit_changed)
-        l.addRow(_('Editor font family:'), fc)
+        l.addRow(_('Editor font &family:'), fc)
 
         fs = self('editor_font_size')
         fs.setMinimum(8), fs.setSuffix(' pt'), fs.setMaximum(50)
@@ -233,12 +233,12 @@ class EditorSettings(BasicSettings):  # {{{
         l.addRow(lw)
 
         self.dictionaries = d = QPushButton(_('Manage &spelling dictionaries'), self)
-        d.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        d.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         d.clicked.connect(self.manage_dictionaries)
         l.addRow(d)
 
         self.snippets = s = QPushButton(_('Manage sni&ppets'), self)
-        s.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        s.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         s.clicked.connect(self.manage_snippets)
         l.addRow(s)
 
@@ -250,7 +250,7 @@ class EditorSettings(BasicSettings):  # {{{
     def manage_snippets(self):
         from calibre.gui2.tweak_book.editor.snippets import UserSnippets
         d = UserSnippets(self)
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             self.snippets_changed = True
 
     def theme_choices(self):
@@ -348,7 +348,7 @@ class PreviewSettings(BasicSettings):  # {{{
         self.setLayout(l)
 
         def default_font(which):
-            from PyQt5.QtWebEngineWidgets import QWebEngineSettings
+            from qt.webengine import QWebEngineSettings
             s = QWebEngineSettings.defaultSettings()
             which = getattr(s, {'serif': 'SerifFont', 'sans': 'SansSerifFont', 'mono': 'FixedFont'}[which])
             return s.fontFamily(which)
@@ -381,6 +381,11 @@ class PreviewSettings(BasicSettings):  # {{{
         w = self('preview_minimum_font_size')
         w.setMinimum(4), w.setMaximum(100), w.setSuffix(' px')
         l.addRow(_('Mi&nimum font size:'), w)
+        w = self('preview_sync_context')
+        w.setMinimum(0), w.setMaximum(10), w.setSuffix(' ' + _('lines'))
+        w.setToolTip('<p>' + _(
+            'Number of lines that are shown above the current line when syncing the text shown in the preview panel to the cursor position in the code view'))
+        l.addRow(_('Visible lines above s&ync point:'), w)
         l.addRow(_('Background color:'), self.color_override('preview_background'))
         l.addRow(_('Foreground color:'), self.color_override('preview_foreground'))
         l.addRow(_('Link color:'), self.color_override('preview_link_color'))
@@ -434,7 +439,7 @@ class ToolbarList(QListWidget):
 
     def __init__(self, parent=None):
         QListWidget.__init__(self, parent)
-        self.setSelectionMode(self.ExtendedSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
 
 class ToolbarSettings(QWidget):
@@ -461,7 +466,7 @@ class ToolbarSettings(QWidget):
         ):
             b.addItem(text, name)
         self.la = la = QLabel(_('&Toolbar to customize:'))
-        la.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        la.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         la.setBuddy(b)
         gl.addWidget(la), gl.addWidget(b, 0, 1)
         self.sl = l = QGridLayout()
@@ -470,10 +475,12 @@ class ToolbarSettings(QWidget):
         self.gb1 = gb1 = QGroupBox(_('A&vailable actions'), self)
         self.gb2 = gb2 = QGroupBox(_('&Current actions'), self)
         gb1.setFlat(True), gb2.setFlat(True)
-        gb1.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        gb2.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        gb1.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        gb2.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         l.addWidget(gb1, 0, 0, -1, 1), l.addWidget(gb2, 0, 2, -1, 1)
         self.available, self.current = ToolbarList(self), ToolbarList(self)
+        self.available.itemDoubleClicked.connect(self.add_single_action)
+        self.current.itemDoubleClicked.connect(self.remove_single_action)
         self.ub = b = QToolButton(self)
         connect_lambda(b.clicked, self, lambda self: self.move(up=True))
         b.setToolTip(_('Move selected action up')), b.setIcon(QIcon(I('arrow-up.png')))
@@ -492,7 +499,7 @@ class ToolbarSettings(QWidget):
         self.rb = b = QToolButton(self)
         b.setToolTip(_('Remove selected actions from the toolbar')), b.setIcon(QIcon(I('back.png')))
         l.addWidget(b, 3, 1), b.clicked.connect(self.remove_action)
-        self.si = QSpacerItem(20, 10, hPolicy=QSizePolicy.Preferred, vPolicy=QSizePolicy.Expanding)
+        self.si = QSpacerItem(20, 10, hPolicy=QSizePolicy.Policy.Preferred, vPolicy=QSizePolicy.Policy.Expanding)
         l.setRowStretch(0, 10), l.setRowStretch(2, 10), l.setRowStretch(4, 10)
         l.addItem(self.si, 4, 1)
 
@@ -544,7 +551,7 @@ class ToolbarSettings(QWidget):
             if not ic or ic.isNull():
                 ic = blank
             ans = QListWidgetItem(ic, unicode_type(ac.text()).replace('&', ''), parent)
-            ans.setData(Qt.UserRole, key)
+            ans.setData(Qt.ItemDataRole.UserRole, key)
             ans.setToolTip(ac.toolTip())
             return ans
 
@@ -552,7 +559,7 @@ class ToolbarSettings(QWidget):
             if key not in applied:
                 to_item(key, ac, self.available)
         if name == 'global_book_toolbar' and 'donate' not in applied:
-            QListWidgetItem(QIcon(I('donate.png')), _('Donate'), self.available).setData(Qt.UserRole, 'donate')
+            QListWidgetItem(QIcon(I('donate.png')), _('Donate'), self.available).setData(Qt.ItemDataRole.UserRole, 'donate')
 
         QListWidgetItem(blank, '--- %s ---' % _('Separator'), self.available)
         for key in items:
@@ -560,7 +567,7 @@ class ToolbarSettings(QWidget):
                 QListWidgetItem(blank, '--- %s ---' % _('Separator'), self.current)
             else:
                 if key == 'donate':
-                    QListWidgetItem(QIcon(I('donate.png')), _('Donate'), self.current).setData(Qt.UserRole, 'donate')
+                    QListWidgetItem(QIcon(I('donate.png')), _('Donate'), self.current).setData(Qt.ItemDataRole.UserRole, 'donate')
                 else:
                     try:
                         ac = all_items[key]
@@ -595,11 +602,17 @@ class ToolbarSettings(QWidget):
         self.changed_signal.emit()
 
     def add_action(self):
+        self._add_action(self.available.selectedItems())
+
+    def add_single_action(self, item):
+        self._add_action([item])
+
+    def _add_action(self, items):
         try:
             s = self.current_settings[self.current_name]
         except KeyError:
             return
-        names = [unicode_type(i.data(Qt.UserRole) or '') for i in self.available.selectedItems()]
+        names = [unicode_type(i.data(Qt.ItemDataRole.UserRole) or '') for i in items]
         if not names:
             return
         for n in names:
@@ -608,11 +621,17 @@ class ToolbarSettings(QWidget):
         self.changed_signal.emit()
 
     def remove_action(self):
+        self._remove_action(self.current.selectedItems())
+
+    def remove_single_action(self, item):
+        self._remove_action([item])
+
+    def _remove_action(self, items):
         try:
             s = self.current_settings[self.current_name]
         except KeyError:
             return
-        rows = sorted({self.current.row(i) for i in self.current.selectedItems()}, reverse=True)
+        rows = sorted({self.current.row(i) for i in items}, reverse=True)
         if not rows:
             return
         for r in rows:
@@ -680,8 +699,8 @@ class TemplatesDialog(Dialog):  # {{{
         self.show_template()
 
         self.bb.clear()
-        self.bb.addButton(self.bb.Close)
-        self.rd = b = self.bb.addButton(self.bb.RestoreDefaults)
+        self.bb.addButton(QDialogButtonBox.StandardButton.Close)
+        self.rd = b = self.bb.addButton(QDialogButtonBox.StandardButton.RestoreDefaults)
         b.clicked.connect(self.restore_defaults)
         l.addWidget(self.bb)
 
@@ -732,25 +751,25 @@ class Preferences(QDialog):
         self.categories_list = cl = QListWidget(self)
         cl.currentRowChanged.connect(self.stacks.setCurrentIndex)
         cl.clearPropertyFlags()
-        cl.setViewMode(cl.IconMode)
-        cl.setFlow(cl.TopToBottom)
-        cl.setMovement(cl.Static)
+        cl.setViewMode(QListView.ViewMode.IconMode)
+        cl.setFlow(QListView.Flow.TopToBottom)
+        cl.setMovement(QListView.Movement.Static)
         cl.setWrapping(False)
         cl.setSpacing(15)
         if get_lang()[:2] not in ('zh', 'ja'):
             cl.setWordWrap(True)
         l.addWidget(cl, 0, 0, 1, 1)
 
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        self.rdb = b = bb.addButton(_('Restore all &defaults'), bb.ResetRole)
+        self.rdb = b = bb.addButton(_('Restore all &defaults'), QDialogButtonBox.ButtonRole.ResetRole)
         b.setToolTip(_('Restore defaults for all preferences'))
         b.clicked.connect(self.restore_all_defaults)
-        self.rcdb = b = bb.addButton(_('Restore &current defaults'), bb.ResetRole)
+        self.rcdb = b = bb.addButton(_('Restore &current defaults'), QDialogButtonBox.ButtonRole.ResetRole)
         b.setToolTip(_('Restore defaults for currently displayed preferences'))
         b.clicked.connect(self.restore_current_defaults)
-        self.rconfs = b = bb.addButton(_('Restore c&onfirmations'), bb.ResetRole)
+        self.rconfs = b = bb.addButton(_('Restore c&onfirmations'), QDialogButtonBox.ButtonRole.ResetRole)
         b.setToolTip(_('Restore all disabled confirmation prompts'))
         b.clicked.connect(self.restore_confirmations)
 
@@ -790,7 +809,7 @@ class Preferences(QDialog):
             cl.item(i).setSizeHint(QSize(w, h))
 
         cl.setMaximumWidth(cl.sizeHintForColumn(0) + 35)
-        cl.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        cl.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         cl.setMinimumWidth(min(cl.maximumWidth(), cl.sizeHint().width()))
 
     @property
@@ -822,6 +841,10 @@ class Preferences(QDialog):
             elif key.startswith('skip_ask_to_show_current_diff_for_'):
                 del tprefs[key]
                 changed += 1
+            elif key == 'questions_to_auto_skip':
+                changed += len(tprefs[key] or ())
+                del tprefs[key]
+
         msg = _('There are no disabled confirmation prompts')
         if changed:
             msg = ngettext(

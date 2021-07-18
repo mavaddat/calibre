@@ -6,7 +6,7 @@ __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-from PyQt5.Qt import QDialog, QWidget, Qt, QDialogButtonBox, QVBoxLayout
+from qt.core import QDialog, QWidget, Qt, QDialogButtonBox, QVBoxLayout
 
 from calibre.gui2.convert.xpath_wizard_ui import Ui_Form
 from calibre.gui2.convert.xexp_edit_ui import Ui_Form as Ui_Edit
@@ -53,13 +53,13 @@ class Wizard(QDialog):
         self.widget = WizardWidget(self)
         self.verticalLayout.addWidget(self.widget)
         self.buttonBox = QDialogButtonBox(self)
-        self.buttonBox.setOrientation(Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok)
+        self.buttonBox.setOrientation(Qt.Orientation.Horizontal)
+        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
         self.verticalLayout.addWidget(self.buttonBox)
 
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
-        self.setModal(Qt.WindowModal)
+        self.setModal(Qt.WindowModality.WindowModal)
 
     @property
     def xpath(self):
@@ -75,7 +75,7 @@ class XPathEdit(QWidget, Ui_Edit):
 
     def wizard(self):
         wiz = Wizard(self)
-        if wiz.exec_() == wiz.Accepted:
+        if wiz.exec_() == QDialog.DialogCode.Accepted:
             self.edit.setText(wiz.xpath)
 
     def setObjectName(self, *args):
@@ -108,7 +108,7 @@ class XPathEdit(QWidget, Ui_Edit):
 
 
 if __name__ == '__main__':
-    from PyQt5.Qt import QApplication
+    from qt.core import QApplication
     app = QApplication([])
     w = XPathEdit()
     w.setObjectName('test')

@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 import re
 
-from PyQt5.Qt import (QDialog, QDialogButtonBox)
+from qt.core import (QDialog, QDialogButtonBox)
 
 from calibre.gui2.store.config.chooser.adv_search_builder_ui import Ui_Dialog
 from calibre.library.caches import CONTAINS_MATCH, EQUALS_MATCH
@@ -39,9 +39,9 @@ class AdvSearchBuilderDialog(QDialog, Ui_Dialog):
 
     def tab_changed(self, idx):
         if idx == 1:
-            self.tab_2_button_box.button(QDialogButtonBox.Ok).setDefault(True)
+            self.tab_2_button_box.button(QDialogButtonBox.StandardButton.Ok).setDefault(True)
         else:
-            self.buttonBox.button(QDialogButtonBox.Ok).setDefault(True)
+            self.buttonBox.button(QDialogButtonBox.StandardButton.Ok).setDefault(True)
 
     def advanced_search_button_pushed(self):
         self.adv_search_used = True

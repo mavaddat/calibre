@@ -3,8 +3,9 @@
 # License: GPLv3 Copyright: 2008, Kovid Goyal <kovid at kovidgoyal.net>
 
 
-from PyQt5.Qt import (
-    QFormLayout, QIcon, QLabel, QLineEdit, QListWidget, Qt, QVBoxLayout
+from qt.core import (
+    QFormLayout, QIcon, QLabel, QLineEdit, QListWidget, Qt, QVBoxLayout, QDialog,
+    QDialogButtonBox, QPlainTextEdit
 )
 
 from calibre import prepare_string_for_xml
@@ -38,7 +39,7 @@ class AddSavedSearch(Dialog):
 
     def setup_ui(self):
         self.l = l = QFormLayout(self)
-        l.setFieldGrowthPolicy(l.AllNonFixedFieldsGrow)
+        l.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
         self.la = la = QLabel(self.label or _(
             'You can create a <i>Saved search</i>, for frequently used searches here.'
@@ -51,13 +52,13 @@ class AddSavedSearch(Dialog):
         l.addRow(_('&Name:'), n)
         n.setPlaceholderText(_('The Saved search name'))
 
-        self.search = s = QLineEdit(self)
+        self.search = s = QPlainTextEdit(self)
         s.setMinimumWidth(400)
         l.addRow(_('&Search:'), s)
         s.setPlaceholderText(_('The search expression'))
         if self.initial_search:
-            s.setText(self.initial_search)
-        n.setFocus(Qt.OtherFocusReason)
+            s.setPlainText(self.initial_search)
+        n.setFocus(Qt.FocusReason.OtherFocusReason)
         l.addRow(self.bb)
 
     def accept(self):
@@ -68,7 +69,7 @@ class AddSavedSearch(Dialog):
                 _('No search name'),
                 _('You must specify a name for the Saved search'),
                 show=True)
-        expression = self.search.text().strip()
+        expression = self.search.toPlainText().strip()
         if not expression:
             return error_dialog(
                 self,
@@ -99,15 +100,15 @@ class SavedSearchEditor(Dialog):
         from calibre.gui2.ui import get_gui
         db = get_gui().current_db
         self.l = l = QVBoxLayout(self)
-        b = self.bb.addButton(_('&Add search'), self.bb.ActionRole)
+        b = self.bb.addButton(_('&Add search'), QDialogButtonBox.ButtonRole.ActionRole)
         b.setIcon(QIcon(I('plus.png')))
         b.clicked.connect(self.add_search)
 
-        b = self.bb.addButton(_('&Remove search'), self.bb.ActionRole)
+        b = self.bb.addButton(_('&Remove search'), QDialogButtonBox.ButtonRole.ActionRole)
         b.setIcon(QIcon(I('minus.png')))
         b.clicked.connect(self.del_search)
 
-        b = self.bb.addButton(_('&Edit search'), self.bb.ActionRole)
+        b = self.bb.addButton(_('&Edit search'), QDialogButtonBox.ButtonRole.ActionRole)
         b.setIcon(QIcon(I('modified.png')))
         b.clicked.connect(self.edit_search)
 
@@ -142,7 +143,7 @@ class SavedSearchEditor(Dialog):
                 return ans
 
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Delete:
+        if ev.key() == Qt.Key.Key_Delete:
             self.del_search()
             return
         return Dialog.keyPressEvent(self, ev)
@@ -153,20 +154,13 @@ class SavedSearchEditor(Dialog):
             self.slist.addItem(name)
 
     def add_search(self):
-        d = AddSavedSearch(parent=self, commit_changes=False)
-        if d.exec_() != d.Accepted:
+        d = AddSavedSearch(parent=self, commit_changes=False, validate=self.validate_add)
+        if d.exec_() != QDialog.DialogCode.Accepted:
             return
         name, expression = d.accepted_data
-        nmap = {icu_lower(n):n for n in self.searches}
-        if icu_lower(name) in nmap:
-            q = nmap[icu_lower(name)]
-            del self.searches[q]
-            self.select_search(q)
-            self.slist.takeItem(self.slist.currentRow())
         self.searches[name] = expression
-        self.slist.insertItem(0, name)
-        self.slist.setCurrentRow(0)
-        self.current_index_changed(self.slist.currentItem())
+        self.populate_search_list()
+        self.select_search(name)
 
     def del_search(self):
         n = self.current_search_name
@@ -184,11 +178,13 @@ class SavedSearchEditor(Dialog):
         n = self.current_search_name
         if not n:
             return
-        d = AddSavedSearch(parent=self, commit_changes=False, label=_('Edit the name and/or expression below.'), validate=self.validate_edit)
+        d = AddSavedSearch(parent=self, commit_changes=False,
+                           label=_('Edit the name and/or expression below.'),
+                           validate=self.validate_edit)
         d.setWindowTitle(_('Edit saved search'))
         d.sname.setText(n)
-        d.search.setText(self.searches[n])
-        if d.exec_() != d.Accepted:
+        d.search.setPlainText(self.searches[n])
+        if d.exec_() != QDialog.DialogCode.Accepted:
             return
         name, expression = d.accepted_data
         self.slist.currentItem().setText(name)
@@ -196,13 +192,20 @@ class SavedSearchEditor(Dialog):
         self.searches[name] = expression
         self.current_index_changed(self.slist.currentItem())
 
+    def duplicate_msg(self, name):
+        return _('A saved search with the name {} already exists. Choose another name').format(name)
+
     def validate_edit(self, name, expression):
         q = self.current_search_name
         if icu_lower(name) in {icu_lower(n) for n in self.searches if n != q}:
-            return _('A saved search with the name {} already exists. Choose another name').format(name)
+            return self.duplicate_msg(name)
+
+    def validate_add(self, name, expression):
+        if icu_lower(name) in {icu_lower(n) for n in self.searches}:
+            return self.duplicate_msg(name)
 
     def select_search(self, name):
-        items = self.slist.findItems(name, Qt.MatchFixedString | Qt.MatchCaseSensitive)
+        items = self.slist.findItems(name, Qt.MatchFlag.MatchFixedString | Qt.MatchFlag.MatchCaseSensitive)
         if items:
             self.slist.setCurrentItem(items[0])
 

@@ -17,12 +17,31 @@ from polyglot import http_client
 rmtree = partial(shutil.rmtree, ignore_errors=True)
 
 
-class BaseTest(unittest.TestCase):
+class SimpleTest(unittest.TestCase):
 
     longMessage = True
     maxDiff = None
 
     ae = unittest.TestCase.assertEqual
+
+
+class BaseTest(SimpleTest):
+
+    def run(self, result=None):
+        # we retry failing server tests since they are flaky on CI
+        if result is None:
+            result = self.defaultTestResult()
+        max_retries = 1
+        for i in range(max_retries + 1):
+            failures_before = len(result.failures)
+            errors_before = len(result.errors)
+            super().run(result=result)
+            if len(result.failures) == failures_before and len(result.errors) == errors_before:
+                return
+            print(f'Retrying test {self._testMethodName} after failure/error')
+            q = result.failures if len(result.failures) > failures_before else result.errors
+            q.pop(-1)
+            time.sleep(1)
 
 
 class LibraryBaseTest(BaseTest):
@@ -76,7 +95,7 @@ class TestServer(Thread):
 
     daemon = True
 
-    def __init__(self, handler, plugins=(), specialize=lambda srv:None, **kwargs):
+    def __init__(self, handler, plugins=(), **kwargs):
         Thread.__init__(self, name='ServerMain')
         from calibre.srv.opts import Options
         from calibre.srv.loop import ServerLoop
@@ -86,11 +105,9 @@ class TestServer(Thread):
             create_http_handler(handler),
             opts=Options(**kwargs),
             plugins=plugins,
-            log=ServerLog(level=ServerLog.WARN),
+            log=ServerLog(level=ServerLog.DEBUG),
         )
         self.log = self.loop.log
-        self.silence_log = self.log
-        specialize(self)
 
     def setup_defaults(self, kwargs):
         kwargs['shutdown_timeout'] = kwargs.get('shutdown_timeout', 0.1)
@@ -112,15 +129,21 @@ class TestServer(Thread):
         return self
 
     def __exit__(self, *args):
-        self.loop.stop()
+        try:
+            self.loop.stop()
+        except Exception as e:
+            self.log.error('Failed to stop server with error:', e)
         self.join(self.loop.opts.shutdown_timeout)
+        self.loop.close_control_connection()
 
     def connect(self, timeout=None, interface=None):
         if timeout is None:
             timeout = self.loop.opts.timeout
         if interface is None:
             interface = self.address[0]
-        return http_client.HTTPConnection(interface, self.address[1], timeout=timeout)
+        ans = http_client.HTTPConnection(interface, self.address[1], timeout=timeout)
+        ans.connect()
+        return ans
 
     def change_handler(self, handler):
         from calibre.srv.http_response import create_http_handler
@@ -129,7 +152,7 @@ class TestServer(Thread):
 
 class LibraryServer(TestServer):
 
-    def __init__(self, library_path, libraries=(), plugins=(), specialize=lambda x:None, **kwargs):
+    def __init__(self, library_path, libraries=(), plugins=(), **kwargs):
         Thread.__init__(self, name='ServerMain')
         from calibre.srv.opts import Options
         from calibre.srv.loop import ServerLoop
@@ -143,12 +166,16 @@ class LibraryServer(TestServer):
             create_http_handler(self.handler.dispatch),
             opts=opts,
             plugins=plugins,
-            log=ServerLog(level=ServerLog.WARN),
+            log=ServerLog(level=ServerLog.DEBUG),
         )
-        self.handler.set_log(self.loop.log)
-        specialize(self)
+        self.log = self.loop.log
+        self.handler.set_log(self.log)
 
     def __exit__(self, *args):
-        self.loop.stop()
+        try:
+            self.loop.stop()
+        except Exception as e:
+            self.log.error('Failed to stop server with error:', e)
         self.handler.close()
         self.join(self.loop.opts.shutdown_timeout)
+        self.loop.close_control_connection()

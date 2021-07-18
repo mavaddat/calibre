@@ -16,6 +16,7 @@ from calibre.constants import iswindows, islinux, ismacos, plugins_loc
 from polyglot.builtins import iteritems, map, unicode_type, getenv
 
 is_ci = os.environ.get('CI', '').lower() == 'true'
+is_sanitized = 'libasan' in os.environ.get('LD_PRELOAD', '')
 
 
 class BuildTest(unittest.TestCase):
@@ -30,22 +31,24 @@ class BuildTest(unittest.TestCase):
                     ctypes.WinDLL(os.path.join(base, x))
                 except Exception as err:
                     self.assertTrue(False, 'Failed to load DLL %s with error: %s' % (x, err))
+
+    def test_pycryptodome(self):
         from Crypto.Cipher import AES
         del AES
 
     @unittest.skipUnless(islinux, 'DBUS only used on linux')
     def test_dbus(self):
-        import dbus
+        from jeepney.io.blocking import open_dbus_connection
         if 'DBUS_SESSION_BUS_ADDRESS' in os.environ:
-            bus = dbus.SystemBus()
-            self.assertTrue(bus.list_names(), 'Failed to list names on the system bus')
-            bus = dbus.SessionBus()
-            self.assertTrue(bus.list_names(), 'Failed to list names on the session bus')
+            bus = open_dbus_connection(bus='SYSTEM')
+            bus.close()
+            bus = open_dbus_connection(bus='SESSION')
+            bus.close()
             del bus
 
     def test_loaders(self):
         import importlib
-        ldr = importlib.import_module('calibre').__spec__.loader
+        ldr = importlib.import_module('calibre').__spec__.loader.get_resource_reader()
         self.assertIn('ebooks', ldr.contents())
         try:
             raw = ldr.open_resource('__init__.py').read()
@@ -67,10 +70,10 @@ class BuildTest(unittest.TestCase):
         del CHMFile, chmlib
 
     def test_chardet(self):
-        from chardet import detect
+        from cchardet import detect
         raw = 'mūsi Füße'.encode('utf-8')
         data = detect(raw)
-        self.assertEqual(data['encoding'], 'utf-8')
+        self.assertEqual(data['encoding'].lower(), 'utf-8')
         self.assertGreater(data['confidence'], 0.5)
         # The following is used by html5lib
         from chardet.universaldetector import UniversalDetector
@@ -103,6 +106,8 @@ class BuildTest(unittest.TestCase):
 
     def test_zeroconf(self):
         import zeroconf as z, ifaddr
+        from calibre.devices.smart_device_app.driver import monkeypatch_zeroconf
+        monkeypatch_zeroconf()
         del z
         del ifaddr
 
@@ -284,11 +289,13 @@ class BuildTest(unittest.TestCase):
 
     @unittest.skipIf('SKIP_QT_BUILD_TEST' in os.environ, 'Skipping Qt build test as it causes crashes in the macOS VM')
     def test_qt(self):
-        from PyQt5.QtCore import QTimer
-        from PyQt5.QtWidgets import QApplication
-        from PyQt5.QtWebEngineWidgets import QWebEnginePage
-        from PyQt5.QtGui import QImageReader, QFontDatabase
-        from PyQt5.QtNetwork import QNetworkAccessManager
+        if is_sanitized:
+            raise unittest.SkipTest('Skipping Qt build test as sanitizer is enabled')
+        from qt.core import QTimer
+        from qt.core import QApplication
+        from qt.webengine import QWebEnginePage
+        from qt.core import QImageReader, QFontDatabase
+        from qt.core import QNetworkAccessManager
         from calibre.utils.img import image_from_data, image_to_data, test
         # Ensure that images can be read before QApplication is constructed.
         # Note that this requires QCoreApplication.libraryPaths() to return the
@@ -298,7 +305,7 @@ class BuildTest(unittest.TestCase):
         # hard-coded paths of the Qt installation should work. If they do not,
         # then it is a distro problem.
         fmts = set(map(lambda x: x.data().decode('utf-8'), QImageReader.supportedImageFormats()))  # no2to3
-        testf = {'jpg', 'png', 'svg', 'ico', 'gif'}
+        testf = {'jpg', 'png', 'svg', 'ico', 'gif', 'webp'}
         self.assertEqual(testf.intersection(fmts), testf, "Qt doesn't seem to be able to load some of its image plugins. Available plugins: %s" % fmts)
         data = P('images/blank.png', allow_user_override=False, data=True)
         img = image_from_data(data)
@@ -319,7 +326,7 @@ class BuildTest(unittest.TestCase):
             na = QNetworkAccessManager()
             self.assertTrue(hasattr(na, 'sslErrors'), 'Qt not compiled with openssl')
             if iswindows:
-                from PyQt5.Qt import QtWin
+                from qt.core import QtWin
                 QtWin
             p = QWebEnginePage()
 
@@ -369,6 +376,10 @@ class BuildTest(unittest.TestCase):
 
     def test_unrar(self):
         from calibre.utils.unrar import test_basic
+        test_basic()
+
+    def test_7z(self):
+        from calibre.utils.seven_zip import test_basic
         test_basic()
 
     @unittest.skipUnless(iswindows, 'WPD is windows only')
@@ -468,6 +479,8 @@ def find_tests():
     from tinycss.tests.main import find_tests
     ans.addTests(find_tests())
     from calibre.spell.dictionary import find_tests
+    ans.addTests(find_tests())
+    from calibre.db.tests.fts import find_tests
     ans.addTests(find_tests())
     return ans
 

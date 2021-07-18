@@ -38,6 +38,7 @@ d['preview_standard_font_family'] = 'serif'
 d['preview_base_font_size'] = 18
 d['preview_mono_font_size'] = 14
 d['preview_minimum_font_size'] = 8
+d['preview_sync_context'] = 0
 d['preview_background'] = 'auto'
 d['preview_foreground'] = 'auto'
 d['preview_link_color'] = 'auto'
@@ -82,6 +83,7 @@ d['preserve_aspect_ratio_when_inserting_image'] = False
 d['file_list_shows_full_pathname'] = False
 d['auto_link_stylesheets'] = True
 d['check_external_link_anchors'] = True
+d['remove_ncx'] = True
 del d
 
 ucase_map = {l:string.ascii_uppercase[i] for i, l in enumerate(string.ascii_lowercase)}

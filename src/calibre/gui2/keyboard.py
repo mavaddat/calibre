@@ -9,14 +9,10 @@ __docformat__ = 'restructuredtext en'
 from collections import OrderedDict
 from functools import partial
 
-from PyQt5.Qt import (QObject, QKeySequence, QAbstractItemModel, QModelIndex,
-        Qt, QStyledItemDelegate, QTextDocument, QStyle, pyqtSignal, QFrame,
-        QApplication, QSize, QRectF, QWidget, QTreeView, QHBoxLayout, QVBoxLayout,
-        QGridLayout, QLabel, QRadioButton, QPushButton, QToolButton, QIcon)
-try:
-    from PyQt5 import sip
-except ImportError:
-    import sip
+from qt.core import (QObject, QKeySequence, QAbstractItemModel, QModelIndex, QItemSelectionModel,
+        Qt, QStyledItemDelegate, QTextDocument, QStyle, pyqtSignal, QFrame, QAbstractItemView, QMenu,
+        QApplication, QSize, QRectF, QWidget, QTreeView, QHBoxLayout, QVBoxLayout, QAbstractItemDelegate,
+        QGridLayout, QLabel, QRadioButton, QPushButton, QToolButton, QIcon, QEvent, sip)
 
 from calibre.utils.config import JSONConfig
 from calibre.constants import DEBUG
@@ -37,15 +33,15 @@ class NameConflict(ValueError):
 def keysequence_from_event(ev):  # {{{
     k, mods = ev.key(), int(ev.modifiers())
     if k in (
-            0, Qt.Key_unknown, Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt,
-            Qt.Key_Meta, Qt.Key_AltGr, Qt.Key_CapsLock, Qt.Key_NumLock,
-            Qt.Key_ScrollLock):
+            0, Qt.Key.Key_unknown, Qt.Key.Key_Shift, Qt.Key.Key_Control, Qt.Key.Key_Alt,
+            Qt.Key.Key_Meta, Qt.Key.Key_AltGr, Qt.Key.Key_CapsLock, Qt.Key.Key_NumLock,
+            Qt.Key.Key_ScrollLock):
         return
-    letter = QKeySequence(k).toString(QKeySequence.PortableText)
-    if mods & Qt.SHIFT and letter.lower() == letter.upper():
+    letter = QKeySequence(k).toString(QKeySequence.SequenceFormat.PortableText)
+    if mods & Qt.Modifier.SHIFT and letter.lower() == letter.upper():
         # Something like Shift+* or Shift+> we have to remove the shift,
         # since it is included in keycode.
-        mods = mods & ~Qt.SHIFT
+        mods = mods & ~Qt.Modifier.SHIFT
     return QKeySequence(k | mods)
 # }}}
 
@@ -69,8 +65,8 @@ def finalize(shortcuts, custom_keys_map={}):  # {{{
             shortcut['set_to_default'] = False
         keys = []
         for x in candidates:
-            ks = QKeySequence(x, QKeySequence.PortableText)
-            x = unicode_type(ks.toString(QKeySequence.PortableText))
+            ks = QKeySequence(x, QKeySequence.SequenceFormat.PortableText)
+            x = unicode_type(ks.toString(QKeySequence.SequenceFormat.PortableText))
             if x in seen:
                 if DEBUG:
                     prints('Key %r for shortcut %s is already used by'
@@ -250,9 +246,9 @@ class ConfigModel(SearchQueryParser, QAbstractItemModel):
                 return self.index(i, 0)
         return ROOT
 
-    def data(self, index, role=Qt.DisplayRole):
+    def data(self, index, role=Qt.ItemDataRole.DisplayRole):
         ip = index.internalPointer()
-        if ip is not None and role == Qt.UserRole:
+        if ip is not None and role == Qt.ItemDataRole.UserRole:
             return ip
         return None
 
@@ -260,7 +256,7 @@ class ConfigModel(SearchQueryParser, QAbstractItemModel):
         ans = QAbstractItemModel.flags(self, index)
         ip = index.internalPointer()
         if getattr(ip, 'is_shortcut', False):
-            ans |= Qt.ItemIsEditable
+            ans |= Qt.ItemFlag.ItemIsEditable
         return ans
 
     def restore_defaults(self):
@@ -303,7 +299,7 @@ class ConfigModel(SearchQueryParser, QAbstractItemModel):
                 if sc['persist_shortcut']:
                     options_map[un] = options_map.get(un, {})
                     options_map[un]['persist_shortcut'] = sc['persist_shortcut']
-                keys = [unicode_type(k.toString(k.PortableText)) for k in sc['keys']]
+                keys = [unicode_type(k.toString(QKeySequence.SequenceFormat.PortableText)) for k in sc['keys']]
                 kmap[un] = keys
         with self.keyboard.config:
             self.keyboard.config['map'] = kmap
@@ -399,12 +395,12 @@ class Editor(QFrame):  # {{{
 
     def __init__(self, parent=None):
         QFrame.__init__(self, parent)
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAutoFillBackground(True)
         self.capture = 0
 
-        self.setFrameShape(self.StyledPanel)
-        self.setFrameShadow(self.Raised)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setFrameShadow(QFrame.Shadow.Raised)
         self._layout = l = QGridLayout(self)
         self.setLayout(l)
 
@@ -448,14 +444,14 @@ class Editor(QFrame):  # {{{
         self.all_shortcuts = all_shortcuts
         self.shortcut = shortcut
 
-        self.default_keys = [QKeySequence(k, QKeySequence.PortableText) for k
+        self.default_keys = [QKeySequence(k, QKeySequence.SequenceFormat.PortableText) for k
                 in shortcut['default_keys']]
         self.current_keys = list(shortcut['keys'])
-        default = ', '.join([unicode_type(k.toString(k.NativeText)) for k in
+        default = ', '.join([unicode_type(k.toString(QKeySequence.SequenceFormat.NativeText)) for k in
                     self.default_keys])
         if not default:
             default = _('None')
-        current = ', '.join([unicode_type(k.toString(k.NativeText)) for k in
+        current = ', '.join([unicode_type(k.toString(QKeySequence.SequenceFormat.NativeText)) for k in
                     self.current_keys])
         if not current:
             current = _('None')
@@ -469,7 +465,7 @@ class Editor(QFrame):  # {{{
             self.use_custom.setChecked(True)
             for key, which in zip(self.current_keys, [1,2]):
                 button = getattr(self, 'button%d'%which)
-                button.setText(key.toString(key.NativeText))
+                button.setText(key.toString(QKeySequence.SequenceFormat.NativeText))
 
     def custom_toggled(self, checked):
         for w in ('1', '2'):
@@ -480,7 +476,7 @@ class Editor(QFrame):  # {{{
         self.capture = which
         button = getattr(self, 'button%d'%which)
         button.setText(_('Press a key...'))
-        button.setFocus(Qt.OtherFocusReason)
+        button.setFocus(Qt.FocusReason.OtherFocusReason)
         button.setStyleSheet('QPushButton { font-weight: bold}')
 
     def clear_clicked(self, which=0):
@@ -490,10 +486,10 @@ class Editor(QFrame):  # {{{
     def eventFilter(self, obj, event):
         if self.capture and obj in (self.button1, self.button2):
             t = event.type()
-            if t == event.ShortcutOverride:
+            if t == QEvent.Type.ShortcutOverride:
                 event.accept()
                 return True
-            if t == event.KeyPress:
+            if t == QEvent.Type.KeyPress:
                 self.key_press_event(event, 1 if obj is self.button1 else 2)
                 return True
         return QFrame.eventFilter(self, obj, event)
@@ -508,12 +504,12 @@ class Editor(QFrame):  # {{{
 
         button = getattr(self, 'button%d'%which)
         button.setStyleSheet('QPushButton { font-weight: normal}')
-        button.setText(sequence.toString(QKeySequence.NativeText))
+        button.setText(sequence.toString(QKeySequence.SequenceFormat.NativeText))
         self.capture = 0
         dup_desc = self.dup_check(sequence)
         if dup_desc is not None:
             error_dialog(self, _('Already assigned'),
-                    unicode_type(sequence.toString(QKeySequence.NativeText)) + ' ' + _(
+                    unicode_type(sequence.toString(QKeySequence.SequenceFormat.NativeText)) + ' ' + _(
                         'already assigned to') + ' ' + dup_desc, show=True)
             self.clear_clicked(which=which)
 
@@ -535,7 +531,7 @@ class Editor(QFrame):  # {{{
             t = unicode_type(button.text())
             if t == _('None'):
                 continue
-            ks = QKeySequence(t, QKeySequence.NativeText)
+            ks = QKeySequence(t, QKeySequence.SequenceFormat.NativeText)
             if not ks.isEmpty():
                 ans.append(ks)
         return tuple(ans)
@@ -553,13 +549,13 @@ class Delegate(QStyledItemDelegate):  # {{{
         self.closeEditor.connect(self.editing_done)
 
     def to_doc(self, index):
-        data = index.data(Qt.UserRole)
+        data = index.data(Qt.ItemDataRole.UserRole)
         if data is None:
             html = _('<b>This shortcut no longer exists</b>')
         elif data.is_shortcut:
             shortcut = data.data
             # Shortcut
-            keys = [unicode_type(k.toString(k.NativeText)) for k in shortcut['keys']]
+            keys = [unicode_type(k.toString(QKeySequence.SequenceFormat.NativeText)) for k in shortcut['keys']]
             if not keys:
                 keys = _('None')
             else:
@@ -583,8 +579,8 @@ class Delegate(QStyledItemDelegate):  # {{{
         painter.save()
         painter.setClipRect(QRectF(option.rect))
         if hasattr(QStyle, 'CE_ItemViewItem'):
-            QApplication.style().drawControl(QStyle.CE_ItemViewItem, option, painter)
-        elif option.state & QStyle.State_Selected:
+            QApplication.style().drawControl(QStyle.ControlElement.CE_ItemViewItem, option, painter)
+        elif option.state & QStyle.StateFlag.State_Selected:
             painter.fillRect(option.rect, option.palette.highlight())
         painter.translate(option.rect.topLeft())
         self.to_doc(index).drawContents(painter)
@@ -610,13 +606,13 @@ class Delegate(QStyledItemDelegate):  # {{{
         editor.initialize(shortcut, all_shortcuts)
 
     def setModelData(self, editor, model, index):
-        self.closeEditor.emit(editor, self.NoHint)
+        self.closeEditor.emit(editor, QAbstractItemDelegate.EndEditHint.NoHint)
         custom_keys = editor.custom_keys
-        sc = index.data(Qt.UserRole).data
+        sc = index.data(Qt.ItemDataRole.UserRole).data
         if custom_keys is None:
             candidates = []
             for ckey in sc['default_keys']:
-                ckey = QKeySequence(ckey, QKeySequence.PortableText)
+                ckey = QKeySequence(ckey, QKeySequence.SequenceFormat.PortableText)
                 matched = False
                 for s in editor.all_shortcuts:
                     if s is editor.shortcut:
@@ -662,11 +658,13 @@ class ShortcutConfig(QWidget):  # {{{
         self.view.setAlternatingRowColors(True)
         self.view.setHeaderHidden(True)
         self.view.setAnimated(True)
+        self.view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.view.customContextMenuRequested.connect(self.show_context_menu)
         l.addWidget(self.view)
         self.delegate = Delegate()
         self.view.setItemDelegate(self.delegate)
         self.delegate.sizeHintChanged.connect(self.editor_opened,
-                type=Qt.QueuedConnection)
+                type=Qt.ConnectionType.QueuedConnection)
         self.delegate.changed_signal.connect(self.changed_signal)
         self.search = SearchBox2(self)
         self.search.initialize('shortcuts_search_history',
@@ -682,12 +680,18 @@ class ShortcutConfig(QWidget):  # {{{
         h.addWidget(self.nb), h.addWidget(self.pb)
         h.setStretch(0, 100)
 
+    def show_context_menu(self, pos):
+        menu = QMenu(self)
+        menu.addAction(_('Expand all'), self.view.expandAll)
+        menu.addAction(_('Collapse all'), self.view.collapseAll)
+        menu.exec_(self.view.mapToGlobal(pos))
+
     def restore_defaults(self):
         self._model.restore_defaults()
         self.changed_signal.emit()
 
     def commit(self):
-        if self.view.state() == self.view.EditingState:
+        if self.view.state() == QAbstractItemView.State.EditingState:
             self.delegate.accept_changes()
         self._model.commit()
 
@@ -696,11 +700,11 @@ class ShortcutConfig(QWidget):  # {{{
         self.view.setModel(self._model)
 
     def editor_opened(self, index):
-        self.view.scrollTo(index, self.view.EnsureVisible)
+        self.view.scrollTo(index, QAbstractItemView.ScrollHint.EnsureVisible)
 
     @property
     def is_editing(self):
-        return self.view.state() == self.view.EditingState
+        return self.view.state() == QAbstractItemView.State.EditingState
 
     def find(self, query):
         if not query:
@@ -720,10 +724,9 @@ class ShortcutConfig(QWidget):  # {{{
 
     def highlight_index(self, idx):
         self.view.scrollTo(idx)
-        self.view.selectionModel().select(idx,
-                self.view.selectionModel().ClearAndSelect)
+        self.view.selectionModel().select(idx, QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.view.setCurrentIndex(idx)
-        self.view.setFocus(Qt.OtherFocusReason)
+        self.view.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def find_next(self, *args):
         idx = self.view.currentIndex()
@@ -745,10 +748,9 @@ class ShortcutConfig(QWidget):  # {{{
         idx = self.view.model().index_for_group(group_name)
         if idx is not None:
             self.view.expand(idx)
-            self.view.scrollTo(idx, self.view.PositionAtTop)
-            self.view.selectionModel().select(idx,
-                    self.view.selectionModel().ClearAndSelect)
+            self.view.scrollTo(idx, QAbstractItemView.ScrollHint.PositionAtTop)
+            self.view.selectionModel().select(idx, QItemSelectionModel.SelectionFlag.ClearAndSelect)
             self.view.setCurrentIndex(idx)
-            self.view.setFocus(Qt.OtherFocusReason)
+            self.view.setFocus(Qt.FocusReason.OtherFocusReason)
 
 # }}}

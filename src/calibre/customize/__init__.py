@@ -2,7 +2,7 @@
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 
-import os, sys, zipfile, importlib
+import os, sys, zipfile, importlib, enum
 
 from calibre.constants import numeric_version, iswindows, ismacos
 from calibre.ptempfile import PersistentTemporaryFile
@@ -24,10 +24,17 @@ class InvalidPlugin(ValueError):
     pass
 
 
+class PluginInstallationType(enum.IntEnum):
+    EXTERNAL = 1
+    SYSTEM = 2
+    BUILTIN = 3
+
+
 class Plugin(object):  # {{{
     '''
     A calibre plugin. Useful members include:
 
+       * ``self.installation_type``: Stores how the plugin was installed.
        * ``self.plugin_path``: Stores path to the ZIP file that contains
                                this plugin or None if it is a builtin
                                plugin
@@ -72,6 +79,9 @@ class Plugin(object):  # {{{
 
     #: The earliest version of calibre this plugin requires
     minimum_calibre_version = (0, 4, 118)
+
+    #: The way this plugin is installed
+    installation_type  = None
 
     #: If False, the user will not be able to disable this plugin. Use with
     #: care.
@@ -133,7 +143,7 @@ class Plugin(object):  # {{{
         True if the user clicks OK, False otherwise. The changes are
         automatically applied.
         '''
-        from PyQt5.Qt import QDialog, QDialogButtonBox, QVBoxLayout, \
+        from qt.core import QDialog, QDialogButtonBox, QVBoxLayout, \
                 QLabel, Qt, QLineEdit
         from calibre.gui2 import gprefs
 
@@ -141,14 +151,14 @@ class Plugin(object):  # {{{
         geom = gprefs.get(prefname, None)
 
         config_dialog = QDialog(parent)
-        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         v = QVBoxLayout(config_dialog)
 
         def size_dialog():
             if geom is None:
                 config_dialog.resize(config_dialog.sizeHint())
             else:
-                from PyQt5.Qt import QApplication
+                from qt.core import QApplication
                 QApplication.instance().safe_restore_geometry(config_dialog, geom)
 
         button_box.accepted.connect(config_dialog.accept)
@@ -171,7 +181,7 @@ class Plugin(object):  # {{{
             size_dialog()
             config_dialog.exec_()
 
-            if config_dialog.result() == QDialog.Accepted:
+            if config_dialog.result() == QDialog.DialogCode.Accepted:
                 if hasattr(config_widget, 'validate'):
                     if config_widget.validate():
                         self.save_settings(config_widget)
@@ -183,7 +193,7 @@ class Plugin(object):  # {{{
             help_text = self.customization_help(gui=True)
             help_text = QLabel(help_text, config_dialog)
             help_text.setWordWrap(True)
-            help_text.setTextInteractionFlags(Qt.LinksAccessibleByMouse | Qt.LinksAccessibleByKeyboard)
+            help_text.setTextInteractionFlags(Qt.TextInteractionFlag.LinksAccessibleByMouse | Qt.TextInteractionFlag.LinksAccessibleByKeyboard)
             help_text.setOpenExternalLinks(True)
             v.addWidget(help_text)
             sc = plugin_customization(self)
@@ -196,7 +206,7 @@ class Plugin(object):  # {{{
             size_dialog()
             config_dialog.exec_()
 
-            if config_dialog.result() == QDialog.Accepted:
+            if config_dialog.result() == QDialog.DialogCode.Accepted:
                 sc = unicode_type(sc.text()).strip()
                 customize_plugin(self, sc)
 
@@ -278,24 +288,26 @@ class Plugin(object):  # {{{
         '''
         if self.plugin_path is not None:
             from calibre.utils.zipfile import ZipFile
-            zf = ZipFile(self.plugin_path)
-            extensions = {x.rpartition('.')[-1].lower() for x in
-                zf.namelist()}
-            zip_safe = True
-            for ext in ('pyd', 'so', 'dll', 'dylib'):
-                if ext in extensions:
-                    zip_safe = False
-                    break
-            if zip_safe:
-                sys.path.insert(0, self.plugin_path)
-                self.sys_insertion_path = self.plugin_path
-            else:
-                from calibre.ptempfile import TemporaryDirectory
-                self._sys_insertion_tdir = TemporaryDirectory('plugin_unzip')
-                self.sys_insertion_path = self._sys_insertion_tdir.__enter__(*args)
-                zf.extractall(self.sys_insertion_path)
-                sys.path.insert(0, self.sys_insertion_path)
-            zf.close()
+            from importlib.machinery import EXTENSION_SUFFIXES
+            with ZipFile(self.plugin_path) as zf:
+                extensions = {x.lower() for x in EXTENSION_SUFFIXES}
+                zip_safe = True
+                for name in zf.namelist():
+                    for q in extensions:
+                        if name.endswith(q):
+                            zip_safe = False
+                            break
+                    if not zip_safe:
+                        break
+                if zip_safe:
+                    sys.path.append(self.plugin_path)
+                    self.sys_insertion_path = self.plugin_path
+                else:
+                    from calibre.ptempfile import TemporaryDirectory
+                    self._sys_insertion_tdir = TemporaryDirectory('plugin_unzip')
+                    self.sys_insertion_path = self._sys_insertion_tdir.__enter__(*args)
+                    zf.extractall(self.sys_insertion_path)
+                    sys.path.append(self.sys_insertion_path)
 
     def __exit__(self, *args):
         ip, it = getattr(self, 'sys_insertion_path', None), getattr(self,
@@ -479,13 +491,13 @@ class CatalogPlugin(Plugin):  # {{{
 
     type = _('Catalog generator')
 
-    #: CLI parser options specific to this plugin, declared as namedtuple Option:
+    #: CLI parser options specific to this plugin, declared as `namedtuple` `Option`:
     #:
-    #:   from collections import namedtuple
-    #:   Option = namedtuple('Option', 'option, default, dest, help')
-    #:   cli_options = [Option('--catalog-title', default = 'My Catalog',
-    #:   dest = 'catalog_title', help = (_('Title of generated catalog. \nDefault:') + " '" + '%default' + "'"))]
-    #:   cli_options parsed in calibre.db.cli.cmd_catalog:option_parser()
+    #:     from collections import namedtuple
+    #:     Option = namedtuple('Option', 'option, default, dest, help')
+    #:     cli_options = [Option('--catalog-title', default = 'My Catalog',
+    #:     dest = 'catalog_title', help = (_('Title of generated catalog. \nDefault:') + " '" + '%default' + "'"))]
+    #:     cli_options parsed in calibre.db.cli.cmd_catalog:option_parser()
     #:
     cli_options = []
 

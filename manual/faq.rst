@@ -18,7 +18,7 @@ What formats does calibre support conversion to/from?
 calibre supports the conversion of many input formats to many output formats.
 It can convert every input format in the following list, to every output format.
 
-*Input Formats:* AZW, AZW3, AZW4, CBZ, CBR, CBC, CHM, DJVU, DOCX, EPUB, FB2, FBZ, HTML, HTMLZ, LIT, LRF, MOBI, ODT, PDF, PRC, PDB, PML, RB, RTF, SNB, TCR, TXT, TXTZ
+*Input Formats:* AZW, AZW3, AZW4, CBZ, CBR, CB7, CBC, CHM, DJVU, DOCX, EPUB, FB2, FBZ, HTML, HTMLZ, LIT, LRF, MOBI, ODT, PDF, PRC, PDB, PML, RB, RTF, SNB, TCR, TXT, TXTZ
 
 *Output Formats:* AZW3, EPUB, DOCX, FB2, HTMLZ, OEB, LIT, LRF, MOBI, PDB, PMLZ, RB, PDF, RTF, SNB, TCR, TXT, TXTZ, ZIP
 
@@ -48,7 +48,7 @@ How do I convert my file containing non-English characters, or smart quotes?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 There are two aspects to this problem:
   1. Knowing the encoding of the source file: calibre tries to guess what character encoding your source files use, but often, this is impossible, so you need to tell it what encoding to use. This can be done in the GUI via the :guilabel:`Input character encoding` field in the :guilabel:`Look & feel->Text` section of the conversion dialog. The command-line tools have an :option:`ebook-convert-txt-input --input-encoding` option.
-  2. When adding HTML files to calibre, you may need to tell calibre what encoding the files are in. To do this go to :guilabel:`Preferences->Advanced->Plugins->File Type plugins` and customize the HTML2Zip plugin, telling it what encoding your HTML files are in. Now when you add HTML files to calibre they will be correctly processed. HTML files from different sources often have different encodings, so you may have to change this setting repeatedly. A common encoding for many files from the web is ``cp1252`` and I would suggest you try that first. Note that when converting HTML files, leave the input encoding setting mentioned above blank. This is because the HTML2ZIP plugin automatically converts the HTML files to a standard encoding (utf-8).
+  2. When adding HTML files to calibre, you may need to tell calibre what encoding the files are in. To do this go to :guilabel:`Preferences->Advanced->Plugins->File type` and customize the :guilabel:`HTML to ZIP` plugin, telling it what encoding your HTML files are in. Now when you add HTML files to calibre they will be correctly processed. HTML files from different sources often have different encodings, so you may have to change this setting repeatedly. A common encoding for many files from the web is ``cp1252`` and I would suggest you try that first. Note that when converting HTML files, leave the input encoding setting mentioned above blank. This is because the :guilabel:`HTML to ZIP` plugin automatically converts the HTML files to a standard encoding (UTF-8).
 
 What's the deal with Table of Contents in MOBI files?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -61,7 +61,7 @@ In the MOBI format, the situation is a little confused. This is because the MOBI
 
 Now it might well seem to you that the MOBI book has two identical ToCs. Remember that one is semantically a content ToC and the other is a metadata ToC, even though both might have exactly the same entries and look the same. One can be accessed directly from the Kindle's menus, the other cannot.
 
-When converting to MOBI, calibre detects the *metadata ToC* in the input document and generates an end-of-file ToC in the output MOBI file. You can turn this off by an option in the MOBI Output settings. You can also tell calibre whether to put it and the start or the end of the book via an option in the MOBI Output settings. Remember this ToC is semantically a *metadata ToC*, in any format other than MOBI it *cannot not be part of the text*. The fact that it is part of the text in MOBI is an accident caused by the limitations of MOBI. If you want a ToC at a particular location in your document text, create one by hand. So we strongly recommend that you leave the default as it is, i.e. with the metadata ToC at the end of the book. Also note that if you disable the generation of the end-of-file ToC the resulting MOBI file may not function correctly on a Kindle, since the Kindle's use the metadata ToC for many things, including the Page Flip feature.
+When converting to MOBI, calibre detects the *metadata ToC* in the input document and generates an end-of-file ToC in the output MOBI file. You can turn this off by an option in the MOBI Output settings. You can also tell calibre whether to put it at the start or the end of the book via an option in the MOBI Output settings. Remember this ToC is semantically a *metadata ToC*, in any format other than MOBI it *cannot not be part of the text*. The fact that it is part of the text in MOBI is an accident caused by the limitations of MOBI. If you want a ToC at a particular location in your document text, create one by hand. So we strongly recommend that you leave the default as it is, i.e. with the metadata ToC at the end of the book. Also note that if you disable the generation of the end-of-file ToC the resulting MOBI file may not function correctly on a Kindle, since the Kindle's use the metadata ToC for many things, including the Page Flip feature.
 
 If you have a hand edited ToC in the input document, you can use the ToC detection options in calibre to automatically generate the metadata ToC from it. See the conversion section of the User Manual for more details on how to use these options.
 
@@ -134,8 +134,9 @@ conversion dialog to control how the Table of Contents is generated.
     C.html and D.html, but B.html also links to D.html, then the files will be
     in the order A.html, B.html, D.html, C.html. If instead you want the order
     to be A.html, B.html, C.html, D.html then you must tell calibre to add your
-    files in *breadth first* order. Do this by going to :guilabel:`Preferences->Advanced->Plugins`
-    and customizing the HTML to ZIP plugin.
+    files in *breadth first* order. Do this by going to
+    :guilabel:`Preferences->Advanced->Plugins->File type` and customizing the
+    :guilabel:`HTML to ZIP` plugin.
 
 The EPUB I produced with calibre is not valid?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -185,7 +186,7 @@ If your device appears as a USB disk to the operating system, adding support for
 We just need some information from you:
 
   * Complete list of e-book formats that your device supports.
-  * Is there a special directory on the device in which all e-book files should be placed? Also does the device detect files placed in sub-directories?
+  * Is there a special folder on the device in which all e-book files should be placed? Also does the device detect files placed in sub-folders?
   * We also need information about your device that calibre will collect automatically. First, if your
     device supports SD cards, insert them. Then connect your device to the computer. In calibre go to :guilabel:`Preferences->Miscellaneous`
     and click the "Debug device detection" button. This will create some debug output. Copy it to a file
@@ -195,7 +196,7 @@ We just need some information from you:
 
 Once you send us the output for a particular operating system, support for the device in that operating system
 will appear in the next release of calibre. To send us the output, open a bug report and attach the output to it.
-See `calibre bugs <https://calibre-ebook.com/bugs>`_.
+See `how to report bugs <https://calibre-ebook.com/bugs>`_.
 
 My device is not being detected by calibre?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -209,7 +210,7 @@ Follow these steps to find the problem:
       no longer allows third party software to connect to their devices using a
       USB cable. Instead use a wireless connection, via the calibre Content
       server.
-    * If you are connecting a Kindle Fire HD or other Android device, read the note
+    * If you are connecting a Kindle Fire or other Android device, read the note
       under :ref:`android_usb`.
     * On macOS if you get permission errors when connecting a device to calibre, you can
       fix that by looking under :guilabel:`System Preferences > Security and
@@ -356,7 +357,7 @@ right IP address to use.
 
 You can now browse your book collection and download books from calibre
 to your device to open with whatever e-book reading software you have on your
-android device.
+Android device.
 
 Calibre Companion and many reading apps support browsing the calibre library
 directly. For example, in Aldiko, click My Catalogs, then + to add a catalog,
@@ -375,16 +376,19 @@ you may not be able to run the server on a port number less than 1024 because of
 this case the simplest solution is to adjust your router to forward requests on port 80 to port 8080).
 
 Also some devices do not have browsers advanced enough to run the app-like
-interface used by the content server. For such devices, you can simply add
+interface used by the Content server. For such devices, you can simply add
 ``/mobile`` to the server URL to get a simplified, non-JavaScript interface.
 
 
 I cannot send emails using calibre?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Because of the large amount of spam in email, sending email can be tricky, as different mail servers use different strategies to block email.
-The most common problem is if you are sending email directly (without a mail relay) in calibre. Many servers (for example, Amazon) block email
-that does not come from a well known relay. The most robust way to setup email sending in calibre is to do the following:
+Because of the large amount of spam in email, sending email can be tricky, as
+different mail servers use different strategies to block email.  The most
+common problem is if you are sending email directly (without a mail relay) in
+calibre. Many servers (for example, Amazon) block email that does not come from
+a well known relay. The most robust way to setup email sending in calibre is to
+do the following:
 
   * Create a free GMX account at `GMX <https://www.gmx.com>`_.
   * Goto :guilabel:`Preferences->Sharing->Sharing books by email` in calibre and click the :guilabel:`Use GMX` button and fill in the information asked for.
@@ -393,7 +397,11 @@ that does not come from a well known relay. The most robust way to setup email s
   * If you are sending to your Kindle, remember to update the email preferences
     on your Amazon Kindle page to allow email sent from your GMX email
     address. Also note that Amazon does not allow email delivery of AZW3 and
-    new style (KF8) MOBI files.
+    new style (KF8) MOBI files. Finally, Amazon recently started sending
+    confirmation emails that you have to click on back to your GMX account
+    before the book is actually delivered. They prefer you use Gmail to avoid
+    the confirmation emails. See the note below for setting up Gmail to work
+    with calibre.
 
 Even after doing this, you may have problems. One common source of problems is that some poorly designed antivirus
 programs block calibre from opening a connection to send email. Try adding an exclusion for calibre in your
@@ -411,8 +419,9 @@ antivirus program.
     an attempt to force everyone to use their web interface so they can
     show you more ads. They are trying to claim that SMTP is insecure,
     that is incorrect and simply an excuse. If you have trouble with
-    gmail you will need to
-    `allow "less secure" apps as described here <https://support.google.com/accounts/answer/6010255>`_.
+    Gmail you will need to `setup an app password
+    <https://support.google.com/accounts/answer/185833>`_. Use this app password
+    as the password for Gmail in the calibre settings.
 
 .. note::
     If you are concerned about giving calibre access to your email
@@ -439,7 +448,7 @@ Why does calibre not support collections on the Kindle or shelves on the Nook?
 Neither the Kindle nor the Nook provide any way to manipulate collections over
 a USB connection.  If you really care about using collections, I would urge you
 to sell your Kindle/Nook and get a Kobo.  Only Kobo seems to understand that
-life is too short to be entering collections one by one on an e-ink screen :)
+life is too short to be entering collections one by one on an e-ink screen 😇
 
 Note that in the case of the Kindle, there is a way to manipulate collections
 via USB, but it requires that the Kindle be rebooted *every time* it is
@@ -513,7 +522,7 @@ you have found the problem book, delete it off the Kindle and do a MOBI to MOBI
 or MOBI to AZW3 conversion in calibre and then send it back. This will most
 likely take care of the problem.
 
-Library Management
+Library management
 ------------------
 
 .. contents:: Contents
@@ -540,7 +549,7 @@ author names. The first thing to understand is that books and authors are
 separate entities in calibre. A book can have more than one author, and an
 author can have more than one book. You can manage the authors of a book by the
 edit metadata dialog. You can manage individual authors by right clicking on
-the author in the Tag browser on the left of the main calibre screen and
+the author in the Tag browser on the left of the main calibre window and
 selecting :guilabel:`Manage authors`. Using this dialog you can change the name
 of an author and also how that name is sorted. This will automatically change
 the name of the author in all the books of that author. When a book has
@@ -577,10 +586,10 @@ With all this flexibility, it is possible to have calibre manage your author nam
         * Press OK, at which point calibre will change the authors in all your books. This can take a while.
 
 
-Why doesn't calibre let me store books in my own directory structure?
+Why doesn't calibre let me store books in my own folder structure?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The whole point of calibre's library management features is that they provide a search and sort based interface for locating books that is *much* more efficient than any possible directory scheme you could come up with for your collection. Indeed, once you become comfortable using calibre's interface to find, sort and browse your collection, you wont ever feel the need to hunt through the files on your disk to find a book again. By managing books in its own directory structure of Author -> Title -> Book files, calibre is able to achieve a high level of reliability and standardization. To illustrate why a search/tagging based interface is superior to folders, consider the following. Suppose your book collection is nicely sorted into folders with the following scheme::
+The whole point of calibre's library management features is that they provide a search and sort based interface for locating books that is *much* more efficient than any possible folder scheme you could come up with for your collection. Indeed, once you become comfortable using calibre's interface to find, sort and browse your collection, you wont ever feel the need to hunt through the files on your disk to find a book again. By managing books in its own folder structure of Author -> Title -> Book files, calibre is able to achieve a high level of reliability and standardization. To illustrate why a search/tagging based interface is superior to folders, consider the following. Suppose your book collection is nicely sorted into folders with the following scheme::
 
     Genre -> Author -> Series -> ReadStatus
 
@@ -664,7 +673,7 @@ then import it on another computer. First let's see how to export the data:
     to the previously copied folder. If the computer you are transferring to
     already has a calibre installation, then the :guilabel:`Welcome wizard` wont run. In
     that case, right-click the calibre icon in the toolbar and point it to the
-    newly copied directory. You will now have two calibre libraries on your
+    newly copied folder. You will now have two calibre libraries on your
     computer and you can switch between them by clicking the calibre icon on
     the toolbar. Transferring your library in this manner preserver all your
     metadata, tags, custom columns, etc.
@@ -762,18 +771,11 @@ only TrueType and OpenType (.ttf and .otf) fonts. Most fonts on macOS systems
 are in .dfont format, thus they cannot be embedded. calibre shows only TrueType
 and OpenType fonts found on your system. You can obtain many such fonts on the
 web. Simply download the .ttf/.otf files and add them to the Library/Fonts
-directory in your home directory.
+folder in your home folder.
 
 calibre is not starting on Windows?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 There can be several causes for this:
-
-    * If you are on Windows XP, or on a computer with a processor that does not
-      support SSE2 (such as AMD processors from before 2003) try installing
-      calibre `version 1.48 <https://download.calibre-ebook.com/1.48.0/>`_. calibre
-      2.0 and newer use Qt 5 which is known to be incompatible with Windows XP
-      machines, and requires SSE2. Simply un-install calibre and then install
-      version 1.48, doing so will not affect your books/settings.
 
     * If you get an error about calibre not being able to open a file because it is in use by another program, do the following:
 
@@ -830,7 +832,7 @@ There are several possible things I know of, that can cause this:
 
     * If the crashes happen specifically when you are using a file dialog, like
       clicking on the :guilabel:`Add books` button or the :guilabel:`Save to
-      Disk button`, then you have some software that has installed broken Shell
+      Disk` button, then you have some software that has installed broken Shell
       extensions on your computer. Known culprits include: *SpiderOak*, *odrive
       sync* and *Dell Backup and Recovery* and *NetDrive*. If you have one of
       these, uninstall them and you will be fine. You can also use the `NirSoft
@@ -852,6 +854,18 @@ Screen Reader.
 The only way to find the culprit is to eliminate the programs one by one and
 see which one is causing the issue. Basically, stop a program, run calibre,
 check for crashes. If they still happen, stop another program and repeat.
+
+
+The calibre E-book viewer and Edit book tools do not work on Windows?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These two programs use hardware acceleration as they embed a version of the
+Chrome browser to render HTML. If they do not work it will be because of
+incompatibility with your system's GPU (graphics) drivers. Try updating these
+first, and reboot. If that does not fix it, you can set the
+``QTWEBENGINE_CHROMIUM_FLAGS`` environment variable to the value
+``--disable-gpu`` to turn off hardware acceleration. See
+`this page <https://doc.qt.io/qt-5/qtwebengine-debugging.html>`_ for details.
 
 
 Using the viewer or doing any conversions results in a permission denied error on Windows
@@ -909,7 +923,7 @@ Downloading from the Internet can sometimes result in a corrupted download. If t
     * Similarly, if the installer is failing/rolling and you have Microsoft PowerToys running, quit it.
     * Try rebooting your computer and running a registry cleaner like `Wise registry cleaner <https://www.wisecleaner.com>`_.
     * Try a clean install. That is, uninstall calibre, delete :file:`C:\\Program Files\\Calibre2` (or wherever you previously chose to install calibre). Then re-install calibre. Note that uninstalling does not touch your books or settings.
-    * Try downloading the installer with an alternate browser. For example if you are using Internet Explorer, try using Firefox or Chrome instead.
+    * Try downloading the installer with an alternate browser. For example if you are using Microsoft Edge, try using Firefox or Chrome instead.
     * If you get an error about a missing DLL on Windows, then most likely, the
       permissions on your temporary folder are incorrect. Go to the folder
       :file:`C:\\Users\\USERNAME\\AppData\\Local` in Windows explorer and then
@@ -945,7 +959,7 @@ The most important thing to backup is the calibre library folder, that contains 
 
 You can switch calibre to using a backed up library folder by simply clicking the calibre icon on the toolbar and choosing your backup library folder. A backed up library folder backs up your custom columns and saved searches as well as all your books and metadata.
 
-If you want to backup the calibre configuration/plugins, you have to backup the config directory. You can find this config directory via :guilabel:`Preferences->Miscellaneous`. Note that restoring configuration directories is not officially supported, but should work in most cases. Just copy the contents of the backup directory into the current configuration directory to restore.
+If you want to backup the calibre configuration/plugins, you have to backup the config folder. You can find this config folder via :guilabel:`Preferences->Miscellaneous`. Note that restoring configuration folders is not officially supported, but should work in most cases. Just copy the contents of the backup folder into the current configuration folder to restore.
 
 How do I use purchased EPUB books with calibre (or what do I do with .acsm files)?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -979,7 +993,7 @@ How do I get calibre to use my HTTP proxy?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, calibre uses whatever proxy settings are set in your OS. Sometimes
-these are incorrect, for example, on Windows if you don't use Internet Explorer
+these are incorrect, for example, on Windows if you don't use Microsoft Edge
 then the proxy settings may not be up to date. You can tell calibre to use a
 particular proxy server by setting the ``http_proxy`` and ``https_proxy``
 environment variables. The format of the variable is:
@@ -992,7 +1006,7 @@ I want some feature added to calibre. What can I do?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 You have two choices:
  1. Create a patch by hacking on calibre and send it to me for review and inclusion. See `Development <https://calibre-ebook.com/get-involved>`_.
- 2. `Open a bug requesting the feature <https://calibre-ebook.com/bugs>`_ . Remember that while you may think your feature request is extremely important/essential, calibre developers might not agree. Fortunately, calibre is open source, which means you always have the option of implementing your feature yourself, or hiring someone to do it for you. Furthermore, calibre has a comprehensive plugin architecture, so you might be able to develop your feature as a plugin, see :ref:`pluginstutorial`.
+ 2. `Open a bug requesting the feature <https://calibre-ebook.com/bugs>`_. Remember that while you may think your feature request is extremely important/essential, calibre developers might not agree. Fortunately, calibre is open source, which means you always have the option of implementing your feature yourself, or hiring someone to do it for you. Furthermore, calibre has a comprehensive plugin architecture, so you might be able to develop your feature as a plugin, see :ref:`pluginstutorial`.
 
 Why doesn't calibre have an automatic update?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

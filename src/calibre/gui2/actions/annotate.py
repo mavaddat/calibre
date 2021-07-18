@@ -7,7 +7,7 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 
-from PyQt5.Qt import pyqtSignal, QModelIndex, QThread, Qt
+from qt.core import pyqtSignal, QModelIndex, QThread, Qt
 
 from calibre.gui2 import error_dialog
 from calibre.gui2.actions import InterfaceAction
@@ -36,8 +36,8 @@ class Updater(QThread):  # {{{
         self.pd.setModal(True)
         self.pd.show()
         self.update_progress.connect(self.pd.set_value,
-                type=Qt.QueuedConnection)
-        self.update_done.connect(self.pd.hide, type=Qt.QueuedConnection)
+                type=Qt.ConnectionType.QueuedConnection)
+        self.update_done.connect(self.pd.hide, type=Qt.ConnectionType.QueuedConnection)
 
     def canceled(self):
         self.keep_going = False
@@ -160,5 +160,5 @@ class FetchAnnotationsAction(InterfaceAction):
                 entries.extend([title, tb, ''])
             error_dialog(self.gui, _('Some errors'),
                     _('Could not fetch annotations for some books. Click '
-                        'show details to see which ones.'),
+                        '"Show details" to see which ones.'),
                     det_msg='\n'.join(entries), show=True)

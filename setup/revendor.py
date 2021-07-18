@@ -28,14 +28,15 @@ class ReVendor(Command):
 
     def download_vendor_release(self, tdir, url):
         self.info('Downloading %s:' % self.TAR_NAME, url)
-        try:
-            raw = download_securely(url)
-        except Exception:
-            if not is_ci:
-                raise
-            self.info('Download failed, sleeping and retrying...')
-            time.sleep(2)
-            raw = download_securely(url)
+        num = 5 if is_ci else 1
+        for i in range(num):
+            try:
+                raw = download_securely(url)
+            except Exception as err:
+                if i == num - 1:
+                    raise
+                self.info(f'Download failed with error "{err}" sleeping and retrying...')
+                time.sleep(2)
         with tarfile.open(fileobj=BytesIO(raw)) as tf:
             tf.extractall(tdir)
             if len(os.listdir(tdir)) == 1:

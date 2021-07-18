@@ -7,7 +7,7 @@ __copyright__ = '2008, Kovid Goyal kovid@kovidgoyal.net' \
 __docformat__ = 'restructuredtext en'
 
 from calibre.gui2.dialogs.confirm_delete_location_ui import Ui_Dialog
-from PyQt5.Qt import QDialog, Qt, QPixmap, QIcon
+from qt.core import QDialog, Qt, QPixmap, QIcon
 
 
 class Dialog(QDialog, Ui_Dialog):
@@ -19,7 +19,7 @@ class Dialog(QDialog, Ui_Dialog):
         self.loc = None
         self.msg.setText(msg)
         self.name = name
-        self.buttonBox.setFocus(Qt.OtherFocusReason)
+        self.buttonBox.setFocus(Qt.FocusReason.OtherFocusReason)
         connect_lambda(self.button_lib.clicked, self, lambda self: self.set_loc('lib'))
         connect_lambda(self.button_device.clicked, self, lambda self: self.set_loc('dev'))
         connect_lambda(self.button_both.clicked, self, lambda self: self.set_loc('both'))
@@ -47,6 +47,6 @@ def confirm_location(msg, name, parent=None, pixmap='dialog_warning.png'):
     d.resize(d.sizeHint())
     ret = d.exec_()
     d.break_cycles()
-    if ret == d.Accepted:
+    if ret == QDialog.DialogCode.Accepted:
         return d.choice()
     return None

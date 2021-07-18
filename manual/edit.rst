@@ -99,8 +99,8 @@ name, calibre will take care of the rest.
 You can also bulk rename many files at once. This is useful
 if you want the files to have some simple name pattern. For example you might
 want to rename all the HTML files to have names Chapter-1.html, Chapter-2.html
-and so on. Select the files you want bulk renamed by holding down the Shift or
-Ctrl key and clicking the files. Then right click and select :guilabel:`Bulk
+and so on. Select the files you want bulk renamed by holding down the :kbd:`Shift` or
+:kbd:`Ctrl` key and clicking the files. Then right click and select :guilabel:`Bulk
 rename`. Enter a prefix and what number you would like the automatic numbering
 to start at, click OK and you are done. The bulk rename dialog also lets you
 rename files by the order they appear in the book instead of the order you
@@ -119,7 +119,7 @@ can sometimes be useful to have everything in a single file. Be wary, though,
 putting a lot of content into a single file will cause performance problems
 when viewing the book in a typical e-book reader.
 
-To merge multiple files together, select them by holding the Ctrl key and
+To merge multiple files together, select them by holding the :kbd:`Ctrl` key and
 clicking on them (make sure you only select files of one type, either all HTML
 files or all CSS files and so on). Then right click and select merge. That's
 all, calibre will merge the files, automatically taking care of migrating all
@@ -258,7 +258,7 @@ click in the Find box and select :guilabel:`Save current search`.
 You can bring up the saved searches via :guilabel:`Search->Saved
 searches`. This will present you with a list of search and replace expressions
 that you can apply. You can even select multiple entries in the list by holding
-down the Ctrl Key while clicking so as to run multiple search and replace
+down the :kbd:`Ctrl` key while clicking so as to run multiple search and replace
 expressions in a single operation.
 
 Function mode
@@ -312,15 +312,15 @@ will show you the location. Click OK once you are happy with the location.
     :alt: The Edit Table of Contents tool, how to change the location an entry points to
     :align: center
 
-Checking the Book
+Checking the book
 ^^^^^^^^^^^^^^^^^^^^^
 
-The :guilabel:`Check Book` tool searches your book for problems that could
+The :guilabel:`Check book` tool searches your book for problems that could
 prevent it working as intended on actual reader devices. Activate it via
-:guilabel:`Tools->Check Book`.
+:guilabel:`Tools->Check book`.
 
 .. image:: images/check-book.png
-    :alt: The Check Book tool
+    :alt: The Check book tool
     :align: center
 
 Any problems found are
@@ -529,7 +529,7 @@ The Live preview panel
 ------------------------
 
 .. image:: images/live-preview.png
-    :alt: The Live preview Panel
+    :alt: The Live preview panel
     :class: float-left-img
 
 The :guilabel:`File preview` gives you an overview of the various files inside
@@ -590,7 +590,7 @@ The Live CSS panel
 ---------------------
 
 .. image:: images/live_css.png
-    :alt: The Live CSS Panel
+    :alt: The Live CSS panel
     :class: float-left-img
 
 
@@ -634,7 +634,7 @@ Checking the spelling of words in the book
 You can run a spelling checker via :guilabel:`Tools->Check spelling`.
 
 .. image:: images/edit-book-spell.png
-    :alt: The Check Spelling tool
+    :alt: The Check spelling tool
     :align: center
     :class: fit-img
 
@@ -689,8 +689,8 @@ Inserting special characters
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 You can insert characters that are difficult to type by using the
-:guilabel:`Edit->Insert special character` tool. This shows you all unicode
-characters, simply click on the character you want to type. If you hold Ctrl
+:guilabel:`Edit->Insert special character` tool. This shows you all Unicode
+characters, simply click on the character you want to type. If you hold :kbd:`Ctrl`
 while clicking, the window will close itself after inserting the selected
 character. This tool can be used to insert special characters into the main
 text or into any other area of the user interface, such as the Search and
@@ -704,12 +704,12 @@ favorites by clicking the :guilabel:`Re-arrange favorites` button and then drag
 and dropping the characters in favorites around.
 
 You can also directly type in special characters using the keyboard. To do
-this, you type the unicode code for the character (in hexadecimal) and then
-press the :guilabel:`Alt+X` key which will convert the previously typed code
+this, you type the Unicode code for the character (in hexadecimal) and then
+press the :kbd:`Alt+X` key which will convert the previously typed code
 into the corresponding character. For example, to type ÿ you would type ff and
-then Alt+X. To type a non-breaking space you would use a0 and then
-:guilabel:`Alt+X`, to type the horizontal ellipsis you would use 2026 and
-:guilabel:`Alt+X` and so on.
+then :kbd:`Alt+X`. To type a non-breaking space you would use a0 and then
+:kbd:`Alt+X`, to type the horizontal ellipsis you would use 2026 and
+:kbd:`Alt+X` and so on.
 
 Finally, you can type in special characters by using HTML named entities. For
 example, typing &nbsp; will be replaced by a non breaking space when you type the
@@ -807,7 +807,7 @@ The HTML editor has very sophisticated syntax highlighting. Features include:
     * Invalid HTML is highlighted with a red underline
     * Spelling errors in the text inside HTML tags and attributes such as title
       are highlighted. The spell checking is language aware, based on the value
-      of the lang attribute of the current tag and the overall book language.
+      of the ``lang`` attribute of the current tag and the overall book language.
     * CSS embedded inside ``<style>`` tags is highlighted
     * Special characters that can be hard to distinguish such as non-breaking
       spaces, different types of hyphens, etc. are highlighted.
@@ -820,8 +820,13 @@ Context sensitive help
 
 You can right click on an HTML tag name or a CSS property name to get help for that tag or property.
 
-You can also hold down the Ctrl key and click on any filename inside a link tag
-to open that file in the editor automatically.
+You can also hold down the :kbd:`Ctrl` key and click on any filename inside a link tag
+to open that file in the editor automatically. Similarly, :kbd:`Ctrl` clicking
+a class name will take you to the first style rule that matches the tag and class.
+
+Right clicking a class name in an HTML file will allow you to rename the class,
+changing all occurrences of the class throughout the book and all its
+stylesheets.
 
 .. _editor_auto_complete:
 
@@ -834,7 +839,7 @@ the correct filename and relative path to the file. The editor has
 auto-complete to make that easier.
 
 As you type a filename, the editor automatically pops up suggestions. Simply
-use the Tab key to select the correct file name. The editor even offers
+use the :kbd:`Tab` key to select the correct file name. The editor even offers
 suggestions for links pointing to an anchor inside another HTML file. After you
 type the ``#`` character, the editor will show you a list of all anchors in the
 target file, with a small snippet of text to help you choose the right anchor.
@@ -843,7 +848,7 @@ Note that unlike most other completion systems, the editor's completion system
 uses subsequence matching. This means that you can type just two or three
 letters from anywhere in the filename to complete the filename. For example,
 say you want the filename ``../images/arrow1.png``, you can simply type ``ia1``
-and press Tab to complete the filename. When searching for matches, the
+and press :kbd:`Tab` to complete the filename. When searching for matches, the
 completion system prioritizes letters that are at the start of a word, or
 immediately after a path separator. Once you get used to this system, you will
 find it saves you a lot of time and effort.

@@ -6,7 +6,7 @@ __copyright__ = '2013, Kovid Goyal <kovid at kovidgoyal.net>'
 
 from collections import defaultdict, deque
 
-from PyQt5.Qt import QTextCursor, QTextBlockUserData, QTextLayout, QTimer
+from qt.core import QTextCursor, QTextBlockUserData, QTextLayout, QTimer
 
 from ..themes import highlight_to_char_format
 from calibre.gui2.tweak_book.widgets import BusyCursor
@@ -136,7 +136,7 @@ class SyntaxHighlighter(object):
         if not last_block.isValid():
             last_block = doc.lastBlock()
         end_cursor = QTextCursor(last_block)
-        end_cursor.movePosition(end_cursor.EndOfBlock)
+        end_cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock)
         self.requests.append((start_cursor, end_cursor))
         QTimer.singleShot(0, self.do_one_block)
 
@@ -158,7 +158,7 @@ class SyntaxHighlighter(object):
             except AttributeError:
                 self.requests.clear()
                 return
-            ok = start_cursor.movePosition(start_cursor.NextBlock)
+            ok = start_cursor.movePosition(QTextCursor.MoveOperation.NextBlock)
             if not ok:
                 self.requests.popleft()
                 return

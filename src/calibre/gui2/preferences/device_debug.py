@@ -7,7 +7,7 @@ __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 
-from PyQt5.Qt import QDialog, QVBoxLayout, QPlainTextEdit, QTimer, \
+from qt.core import QDialog, QVBoxLayout, QPlainTextEdit, QTimer, \
     QDialogButtonBox, QPushButton, QApplication, QIcon
 
 from calibre.gui2 import error_dialog
@@ -32,8 +32,8 @@ class DebugDevice(QDialog):
         self.ok.setAutoDefault(False)
         self.ok.clicked.connect(self.accept)
         self.bbox = QDialogButtonBox(self)
-        self.bbox.addButton(self.copy, QDialogButtonBox.ActionRole)
-        self.bbox.addButton(self.ok, QDialogButtonBox.AcceptRole)
+        self.bbox.addButton(self.copy, QDialogButtonBox.ButtonRole.ActionRole)
+        self.bbox.addButton(self.ok, QDialogButtonBox.ButtonRole.AcceptRole)
         self._layout.addWidget(self.bbox)
         self.resize(750, 500)
         self.bbox.setEnabled(False)

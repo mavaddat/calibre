@@ -53,22 +53,35 @@ authors_completer_append_separator = False
 #  comma : use 'copy' if there is a ',' in the name, otherwise use 'invert'
 #  nocomma : "fn ln" -> "ln fn" (without the comma)
 # When this tweak is changed, the author_sort values stored with each author
-# must be recomputed by right-clicking on an author in the left-hand tags panel,
-# selecting 'manage authors', and pressing 'Recalculate all author sort values'.
-# The author name suffixes are words that are ignored when they occur at the
+# must be recomputed by right-clicking on an author in the left-hand tags
+# panel, selecting 'manage authors', and pressing
+# 'Recalculate all author sort values'.
+#
+# The author_name_suffixes are words that are ignored when they occur at the
 # end of an author name. The case of the suffix is ignored and trailing
-# periods are automatically handled. The same is true for prefixes.
-# The author name copy words are a set of words which if they occur in an
-# author name cause the automatically generated author sort string to be
-# identical to the author name. This means that the sort for a string like Acme
-# Inc. will be Acme Inc. instead of Inc., Acme
+# periods are automatically handled.
+#
+# The same is true for author_name_prefixes.
+#
+# The author_name_copywords are a set of words which, if they occur in an
+# author name, cause the automatically generated author sort string to be
+# identical to the author name. This means that the sort for a string like
+# "Acme Inc." will be "Acme Inc." instead of "Inc., Acme".
+#
+# If author_use_surname_prefixes is enabled, any of the words in
+# author_surname_prefixes will be treated as a prefix to the surname, if they
+# occur before the surname. So for example, "John von Neumann" would be sorted
+# as "von Neumann, John" and not "Neumann, John von".
 author_sort_copy_method = 'comma'
 author_name_suffixes = ('Jr', 'Sr', 'Inc', 'Ph.D', 'Phd',
                         'MD', 'M.D', 'I', 'II', 'III', 'IV',
                         'Junior', 'Senior')
 author_name_prefixes = ('Mr', 'Mrs', 'Ms', 'Dr', 'Prof')
-author_name_copywords = ('Corporation', 'Company', 'Co.', 'Agency', 'Council',
-        'Committee', 'Inc.', 'Institute', 'Society', 'Club', 'Team')
+author_name_copywords = ('Agency', 'Corporation', 'Company', 'Co.', 'Council',
+                         'Committee', 'Inc.', 'Institute', 'National',
+                         'Society', 'Club', 'Team')
+author_use_surname_prefixes = False
+author_surname_prefixes = ('da', 'de', 'di', 'la', 'le', 'van', 'von')
 
 #: Splitting multiple author names
 # By default, calibre splits a string containing multiple author names on
@@ -79,10 +92,10 @@ author_name_copywords = ('Corporation', 'Company', 'Co.', 'Agency', 'Council',
 authors_split_regex = r'(?i),?\s+(and|with)\s+'
 
 #: Use author sort in Tag browser
-# Set which author field to display in the tags panel (the list of authors,
+# Set which author field to display in the Tag browser (the list of authors,
 # series, publishers etc on the left hand side). The choices are author and
 # author_sort. This tweak affects only what is displayed under the authors
-# category in the tags panel and Content server. Please note that if you set this
+# category in the Tag browser and Content server. Please note that if you set this
 # to author_sort, it is very possible to see duplicate names in the list because
 # although it is guaranteed that author names are unique, there is no such
 # guarantee for author_sort values. Showing duplicates won't break anything, but
@@ -120,10 +133,24 @@ categories_collapsed_popularity_template = r'{first.count:d} - {last.count:d}'
 # the Tag browser. Items are named using their lookup name, and will be sorted
 # using the number supplied. The lookup name '*' stands for all names that
 # otherwise do not appear. Two names with the same value will be sorted
-# using the default order; the one used when the dict is empty.
-# Example: tag_browser_category_order = {'series':1, 'tags':2, '*':3}
-# resulting in the order series, tags, then everything else in default order.
+# using the default order, the one specified by tag_browser_category_default_sort.
+# Example:
+#   tag_browser_category_order = {'series':1, 'tags':2, '*':3}
+#
+# results in the order series, tags, then everything else in default order.
+# The tweak tag_browser_category_default_sort specifies the sort order before
+# applying the category order from the dict. The allowed values are:
+#   tag_browser_category_default_sort = 'default' # The calibre default order
+#   tag_browser_category_default_sort = 'display_name' # Sort by the display name of the category
+#   tag_browser_category_default_sort = 'lookup_name' # Sort by the lookup name of the category
+#
+# In addition and if the category default sort is not 'default' you can specify
+# whether the sort is ascending or descending. This is ignored if the sort is 'default'.
+#   tag_browser_category_default_sort_direction = 'ascending'
+#   tag_browser_category_default_sort_direction = 'descending'
 tag_browser_category_order = {'*':1}
+tag_browser_category_default_sort = 'default'
+tag_browser_category_default_sort_direction = 'ascending'
 
 
 #: Specify columns to sort the booklist by on startup
@@ -267,11 +294,12 @@ title_sort_articles=r'^(A|The|An)\s+'
 auto_connect_to_folder = ''
 
 #: Specify renaming rules for SONY collections
-# Specify renaming rules for sony collections. This tweak is only applicable if
-# metadata management is set to automatic. Collections on Sonys are named
+# Specify renaming rules for SONY collections. This tweak is only applicable if
+# metadata management is set to automatic. Collections on SONYs are named
 # depending upon whether the field is standard or custom. A collection derived
-# from a standard field is named for the value in that field. For example, if
-# the standard 'series' column contains the value 'Darkover', then the
+# from a standard field is named for the value in that field.
+#
+# For example, if the standard 'series' column contains the value 'Darkover', then the
 # collection name is 'Darkover'. A collection derived from a custom field will
 # have the name of the field added to the value. For example, if a custom series
 # column named 'My Series' contains the name 'Darkover', then the collection
@@ -279,18 +307,22 @@ auto_connect_to_folder = ''
 # documentation, 'Darkover' is called the value and 'My Series' is called the
 # category. If two books have fields that generate the same collection name,
 # then both books will be in that collection.
+#
 # This set of tweaks lets you specify for a standard or custom field how
 # the collections are to be named. You can use it to add a description to a
 # standard field, for example 'Foo (Tag)' instead of the 'Foo'. You can also use
-# it to force multiple fields to end up in the same collection. For example, you
-# could force the values in 'series', '#my_series_1', and '#my_series_2' to
-# appear in collections named 'some_value (Series)', thereby merging all of the
-# fields into one set of collections.
+# it to force multiple fields to end up in the same collection.
+#
+# For example, you could force the values in 'series', '#my_series_1', and
+# '#my_series_2' to appear in collections named 'some_value (Series)', thereby
+# merging all of the fields into one set of collections.
+#
 # There are two related tweaks. The first determines the category name to use
 # for a metadata field.  The second is a template, used to determines how the
 # value and category are combined to create the collection name.
 # The syntax of the first tweak, sony_collection_renaming_rules, is:
 # {'field_lookup_name':'category_name_to_use', 'lookup_name':'name', ...}
+#
 # The second tweak, sony_collection_name_template, is a template. It uses the
 # same template language as plugboards and save templates. This tweak controls
 # how the value and category are combined together to make the collection name.
@@ -298,29 +330,35 @@ auto_connect_to_folder = ''
 # never empty. The {category} field can be empty. The default is to put the
 # value first, then the category enclosed in parentheses, it isn't empty:
 # '{value} {category:|(|)}'
+#
 # Examples: The first three examples assume that the second tweak
 # has not been changed.
-#  1: I want three series columns to be merged into one set of collections. The
-#  column lookup names are 'series', '#series_1' and '#series_2'. I want nothing
-#  in the parenthesis. The value to use in the tweak value would be:
+#
+# 1) I want three series columns to be merged into one set of collections. The
+# column lookup names are 'series', '#series_1' and '#series_2'. I want nothing
+# in the parenthesis. The value to use in the tweak value would be:
 #    sony_collection_renaming_rules={'series':'', '#series_1':'', '#series_2':''}
-#  2: I want the word '(Series)' to appear on collections made from series, and
-#  the word '(Tag)' to appear on collections made from tags. Use:
-#    sony_collection_renaming_rules={'series':'Series', 'tags':'Tag'}
-#  3: I want 'series' and '#myseries' to be merged, and for the collection name
-#  to have '(Series)' appended. The renaming rule is:
-#    sony_collection_renaming_rules={'series':'Series', '#myseries':'Series'}
-#  4: Same as example 2, but instead of having the category name in parentheses
-#  and appended to the value, I want it prepended and separated by a colon, such
-#  as in Series: Darkover. I must change the template used to format the category name
-#  The resulting two tweaks are:
+#
+# 2) I want the word '(Series)' to appear on collections made from series, and
+# the word '(Tag)' to appear on collections made from tags. Use:
+#   sony_collection_renaming_rules={'series':'Series', 'tags':'Tag'}
+#
+# 3) I want 'series' and '#myseries' to be merged, and for the collection name
+# to have '(Series)' appended. The renaming rule is:
+#   sony_collection_renaming_rules={'series':'Series', '#myseries':'Series'}
+#
+# 4) Same as example 2, but instead of having the category name in parentheses
+# and appended to the value, I want it prepended and separated by a colon, such
+# as in Series: Darkover. I must change the template used to format the category name
+#
+# The resulting two tweaks are:
 #    sony_collection_renaming_rules={'series':'Series', 'tags':'Tag'}
 #    sony_collection_name_template='{category:||: }{value}'
 sony_collection_renaming_rules={}
 sony_collection_name_template='{value}{category:| (|)}'
 
 #: Specify how SONY collections are sorted
-# Specify how sony collections are sorted. This tweak is only applicable if
+# Specify how SONY collections are sorted. This tweak is only applicable if
 # metadata management is set to automatic. You can indicate which metadata is to
 # be used to sort on a collection-by-collection basis. The format of the tweak
 # is a list of metadata fields from which collections are made, followed by the
@@ -363,17 +401,18 @@ sort_dates_using_visible_fields = False
 cover_trim_fuzz_value = 10
 
 #: Control behavior of the book list
-# You can control the behavior of double clicks and pressing enter on the books list.
-# Choices: open_viewer, do_nothing,
-# edit_cell, edit_metadata. Selecting anything other than open_viewer has the
-# side effect of disabling editing a field using a single click.
+# You can control the behavior of double clicks and pressing enter on the books
+# list. Choices: open_viewer, do_nothing, show_book_details, edit_cell,
+# edit_metadata. Selecting anything other than open_viewer or show_book_details
+# has the side effect of disabling editing a field using a single click.
 # Default: open_viewer.
 # Example: doubleclick_on_library_view = 'do_nothing'
-# You can also control whether the book list scrolls horizontal per column or
-# per pixel. Default is per column.
+# You can also control whether the book list scrolls per item or
+# per pixel. Default is per item.
 doubleclick_on_library_view = 'open_viewer'
 enter_key_behavior = 'do_nothing'
-horizontal_scrolling_per_column = True
+horizontal_scrolling_per_column = False
+vertical_scrolling_per_row = False
 
 #: Language to use when sorting
 # Setting this tweak will force sorting to use the
@@ -466,7 +505,7 @@ save_original_format_when_polishing = True
 # how many should be shown, here.
 gui_view_history_size = 15
 
-#: Change the font size of book details in the interface
+#: Change the font size of the Book details panel in the interface
 # Change the font size at which book details are rendered in the side panel and
 # comments are rendered in the metadata edit dialog. Set it to a positive or
 # negative number to increase or decrease the font size.
@@ -557,3 +596,8 @@ exclude_fields_on_paste = []
 # Useful if for some reason your operating systems network checking
 # facilities are not reliable (for example NetworkManager on Linux).
 skip_network_check = False
+
+#: Tab stop width in the template editor
+# Sets the width of the tab stop in the template editor in "average characters".
+# For example, a value of 1 results in a space with the width of one average character.
+template_editor_tab_stop_width = 4

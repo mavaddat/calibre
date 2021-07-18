@@ -86,7 +86,7 @@ So it looks like to get the print version, we need to prefix every article URL w
 
     newsvote.bbc.co.uk/mpapps/pagetools/print/
 
-Now in the :guilabel:`Advanced Mode` of the Custom  news sources dialog, you should see something like (remember to select *The BBC* recipe before switching to advanced mode):
+Now in the :guilabel:`Advanced mode` of the Custom news sources dialog, you should see something like (remember to select *The BBC* recipe before switching to advanced mode):
 
 .. image:: images/bbc_advanced.png
     :align: center
@@ -142,9 +142,7 @@ to the recipe. Finally, lets replace some of the :term:`CSS` that we disabled ea
 
     extra_css      = '.headline {font-size: x-large;} \n .fact { padding-top: 10pt  }'
 
-With these additions, our recipe has become "production quality", indeed it is very close to the actual recipe used by calibre for the *BBC*, shown below:
-
-.. literalinclude:: ../../../recipes/bbc.recipe
+With these additions, our recipe has become "production quality".
 
 This :term:`recipe` explores only the tip of the iceberg when it comes to the power of calibre. To explore more of the abilities of calibre we'll examine a more complex real life example in the next section.
 
@@ -296,7 +294,7 @@ them to the EPUB file :file:`myrecipe.epub`. The ``-vv`` option makes
 ebook-convert spit out a lot of information about what it is doing. The
 :option:`ebook-convert-recipe-input --test` option makes it download only a couple of articles from at most two
 feeds. In addition, ebook-convert will put the downloaded HTML into the
-``debug/input`` directory, where ``debug`` is the directory you specified in
+``debug/input`` folder, where ``debug`` is the folder you specified in
 the :option:`ebook-convert --debug-pipeline` option.
 
 Once the download is complete, you can look at the downloaded :term:`HTML` by opening the file :file:`debug/input/index.html` in a browser. Once you're satisfied that the download and preprocessing is happening correctly, you can generate e-books in different formats as shown below::

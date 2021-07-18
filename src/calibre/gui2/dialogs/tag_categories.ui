@@ -21,7 +21,7 @@
    <item>
     <layout class="QGridLayout" name="gridLayout_4">
      <item row="0" column="0">
-      <layout class="QFormLayout" name="formLayout">
+      <layout class="QGridLayout" name="formLayout">
        <item row="0" column="0">
         <widget class="QLabel" name="label_3">
          <property name="text">
@@ -48,6 +48,17 @@
            <width>150</width>
            <height>0</height>
           </size>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QToolButton" name="copy_category_name_to_clipboard">
+         <property name="toolTip">
+          <string>Copy the category name to the clipboard</string>
+         </property>
+         <property name="icon">
+          <iconset resource="../../../../resources/images.qrc">
+           <normaloff>:/images/edit-copy.png</normaloff>:/images/edit-copy.png</iconset>
          </property>
         </widget>
        </item>
@@ -110,7 +121,7 @@
        <item row="0" column="0">
         <widget class="QToolButton" name="delete_category_button">
          <property name="toolTip">
-          <string>Delete the current tag category</string>
+          <string>Delete the current user category</string>
          </property>
          <property name="text">
           <string>...</string>
@@ -248,7 +259,7 @@
      <item row="3" column="3">
       <widget class="QToolButton" name="unapply_button">
        <property name="toolTip">
-        <string>Unapply (remove) tag from current tag category</string>
+        <string>Unapply (remove) selected tags from current tag category</string>
        </property>
        <property name="text">
         <string>...</string>

@@ -1092,7 +1092,7 @@ TryExec=lrfviewer
 Exec=lrfviewer %f
 Icon=calibre-viewer
 MimeType=application/x-sony-bbeb;
-Categories=Graphics;Viewer;
+Categories=Office;Viewer;
 '''
 
 EVIEWER = '''\
@@ -1105,7 +1105,7 @@ Comment=Viewer for E-books in all the major formats
 TryExec=ebook-viewer
 Exec=ebook-viewer --detach %f
 Icon=calibre-viewer
-Categories=Graphics;Viewer;
+Categories=Office;Viewer;
 '''
 
 ETWEAK = '''\
@@ -1118,7 +1118,7 @@ Comment=Edit E-books in various formats
 TryExec=ebook-edit
 Exec=ebook-edit --detach %f
 Icon=calibre-ebook-edit
-Categories=Office;
+Categories=Office;WordProcessor
 '''
 
 GUI = '''\
@@ -1160,7 +1160,7 @@ def get_appdata():
             'summary':_('Edit the text and styles inside e-books'),
             'description':(
                 _('The calibre E-book editor allows you to edit the text and styles inside the book with a live preview of your changes.'),
-                _('It can edit books in both the EPUB and AZW3 (kindle) formats. It includes various useful tools for checking the book for errors, editing the Table of Contents, performing automated cleanups, etc.'),  # noqa
+                _('It can edit books in both the EPUB and AZW3 (Kindle) formats. It includes various useful tools for checking the book for errors, editing the Table of Contents, performing automated cleanups, etc.'),  # noqa
             ),
             'screenshots':(
                 (1408, 792, 'https://lh5.googleusercontent.com/-M2MAVc3A8e4/UvHMWqGRa8I/AAAAAAAAATA/cecQeWUYBVs/w1408-h792-no/edit-default.png',),
@@ -1217,7 +1217,7 @@ def make_appdata_releases():
         # Formatting of release description tries to resemble that of
         # https://calibre-ebook.com/whats-new while taking into account the limits imposed by
         # https://www.freedesktop.org/software/appstream/docs/chap-Metadata.html#tag-description
-        description = E.description('{http://www.w3.org/XML/1998/namespace}lang', 'en')
+        description = E.description(**{'{http://www.w3.org/XML/1998/namespace}lang': 'en'})
         if 'new features' in revision:
             description.append(E.p('New features:'))
             description.append(E.ol(
@@ -1261,8 +1261,7 @@ def write_appdata(key, entry, base, translators):
         for lang, t in iteritems(translators):
             tp = t.gettext(para)
             if tp != para:
-                description.append(E.p(tp))
-                description[-1].set('{http://www.w3.org/XML/1998/namespace}lang', lang)
+                description.append(E.p(tp, **{'{http://www.w3.org/XML/1998/namespace}lang': lang}))
 
     root = E.component(
         E.id(key + '.desktop'),
@@ -1287,8 +1286,7 @@ def write_appdata(key, entry, base, translators):
     for lang, t in iteritems(translators):
         tp = t.gettext(entry['summary'])
         if tp != entry['summary']:
-            root.append(E.summary(tp))
-            root[-1].set('{http://www.w3.org/XML/1998/namespace}lang', lang)
+            root.append(E.summary(tp, **{'{http://www.w3.org/XML/1998/namespace}lang': lang}))
     if entry.get('include-releases', False):
         try:
             root.append(make_appdata_releases())
@@ -1301,8 +1299,8 @@ def write_appdata(key, entry, base, translators):
 
 
 def render_img(image, dest, width=128, height=128):
-    from PyQt5.Qt import QImage, Qt
-    img = QImage(I(image)).scaled(width, height, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    from qt.core import QImage, Qt
+    img = QImage(I(image)).scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
     img.save(dest)
 
 

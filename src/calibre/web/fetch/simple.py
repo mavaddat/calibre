@@ -28,13 +28,13 @@ from calibre.utils.img import image_from_data, image_to_data
 from calibre.utils.imghdr import what
 from calibre.utils.logging import Log
 from calibre.web.fetch.utils import rescale_image
-from polyglot.builtins import unicode_type
+from polyglot.binary import from_base64_bytes
+from polyglot.builtins import as_bytes, unicode_type
 from polyglot.http_client import responses
 from polyglot.urllib import (
     URLError, quote, url2pathname, urljoin, urlparse, urlsplit, urlunparse,
     urlunsplit
 )
-from polyglot.binary import from_base64_bytes
 
 
 class AbortArticle(Exception):
@@ -60,6 +60,18 @@ class closing(object):
             self.thing.close()
         except Exception:
             pass
+
+
+def canonicalize_url(url):
+    # mechanize does not handle quoting automatically
+    if re.search(r'\s+', url) is not None:
+        if isinstance(url, unicode_type):
+            url = url.encode('utf-8')
+        purl = list(urlparse(url))
+        for i in range(2, 6):
+            purl[i] = as_bytes(quote(purl[i]))
+        url = urlunparse(purl).decode('utf-8')
+    return url
 
 
 bad_url_counter = 0
@@ -236,7 +248,7 @@ class RecursiveFetcher(object):
     def fetch_url(self, url):
         data = None
         self.log.debug('Fetching', url)
-        st = time.time()
+        st = time.monotonic()
 
         # Check for a URL pointing to the local filesystem and special case it
         # for efficiency and robustness. Bypasses delay checking as it does not
@@ -255,20 +267,13 @@ class RecursiveFetcher(object):
                 data = response(f.read())
                 data.newurl = 'file:'+url  # This is what mechanize does for
                 # local URLs
-            self.log.debug('Fetched %s in %.1f seconds' % (url, time.time() - st))
+            self.log.debug('Fetched %s in %.1f seconds' % (url, time.monotonic() - st))
             return data
 
-        delta = time.time() - self.last_fetch_at
+        delta = time.monotonic() - self.last_fetch_at
         if delta < self.delay:
             time.sleep(self.delay - delta)
-        # mechanize does not handle quoting automatically
-        if re.search(r'\s+', url) is not None:
-            if isinstance(url, unicode_type):
-                url = url.encode('utf-8')
-            purl = list(urlparse(url))
-            for i in range(2, 6):
-                purl[i] = quote(purl[i])
-            url = urlunparse(purl).decode('utf-8')
+        url = canonicalize_url(url)
         open_func = getattr(self.browser, 'open_novisit', self.browser.open)
         try:
             with closing(open_func(url, timeout=self.timeout)) as f:
@@ -292,8 +297,8 @@ class RecursiveFetcher(object):
             else:
                 raise err
         finally:
-            self.last_fetch_at = time.time()
-        self.log.debug('Fetched %s in %f seconds' % (url, time.time() - st))
+            self.last_fetch_at = time.monotonic()
+        self.log.debug('Fetched %s in %f seconds' % (url, time.monotonic() - st))
         return data
 
     def start_fetch(self, url):
@@ -341,10 +346,13 @@ class RecursiveFetcher(object):
                 iurl = tag['href']
                 if not urlsplit(iurl).scheme:
                     iurl = urljoin(baseurl, iurl, False)
+                found_cached = False
                 with self.stylemap_lock:
                     if iurl in self.stylemap:
                         tag['href'] = self.stylemap[iurl]
-                        continue
+                        found_cached = True
+                if found_cached:
+                    continue
                 try:
                     data = self.fetch_url(iurl)
                 except Exception:
@@ -364,10 +372,13 @@ class RecursiveFetcher(object):
                         iurl = m.group(1)
                         if not urlsplit(iurl).scheme:
                             iurl = urljoin(baseurl, iurl, False)
+                        found_cached = False
                         with self.stylemap_lock:
                             if iurl in self.stylemap:
                                 ns.replaceWith(src.replace(m.group(1), self.stylemap[iurl]))
-                                continue
+                                found_cached = True
+                        if found_cached:
+                            continue
                         try:
                             data = self.fetch_url(iurl)
                         except Exception:
@@ -402,10 +413,13 @@ class RecursiveFetcher(object):
                     iurl = self.image_url_processor(baseurl, iurl)
                 if not urlsplit(iurl).scheme:
                     iurl = urljoin(baseurl, iurl, False)
+                found_in_cache = False
                 with self.imagemap_lock:
                     if iurl in self.imagemap:
                         tag['src'] = self.imagemap[iurl]
-                        continue
+                        found_in_cache = True
+                if found_in_cache:
+                    continue
                 try:
                     data = self.fetch_url(iurl)
                     if data == b'GIF89a\x01':
@@ -529,9 +543,9 @@ class RecursiveFetcher(object):
                     else:
                         dsrc = xml_to_unicode(dsrc, self.verbose)[0]
 
-                    st = time.time()
+                    st = time.monotonic()
                     soup = self.get_soup(dsrc, url=iurl)
-                    self.log.debug('Parsed %s in %.1f seconds' % (iurl, time.time() - st))
+                    self.log.debug('Parsed %s in %.1f seconds' % (iurl, time.monotonic() - st))
 
                     base = soup.find('base', href=True)
                     if base is not None:
@@ -588,7 +602,7 @@ class RecursiveFetcher(object):
 def option_parser(usage=_('%prog URL\n\nWhere URL is for example https://google.com')):
     parser = OptionParser(usage=usage)
     parser.add_option('-d', '--base-dir',
-                      help=_('Base directory into which URL is saved. Default is %default'),
+                      help=_('Base folder into which URL is saved. Default is %default'),
                       default='.', type='string', dest='dir')
     parser.add_option('-t', '--timeout',
                       help=_('Timeout in seconds to wait for a response from the server. Default: %default s'),

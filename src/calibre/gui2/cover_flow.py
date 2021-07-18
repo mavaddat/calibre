@@ -9,15 +9,19 @@ __docformat__ = 'restructuredtext en'
 Module to implement the Cover Flow feature
 '''
 
-import sys, os, time
+import os
+import sys
+import time
+from qt.core import (
+    QAction, QApplication, QDialog, QFont, QImage, QItemSelectionModel,
+    QKeySequence, QLabel, QSize, QSizePolicy, QStackedLayout, Qt, QTimer, pyqtSignal
+)
 
-from PyQt5.Qt import (QImage, QSizePolicy, QTimer, QDialog, Qt, QSize, QAction,
-        QStackedLayout, QLabel, pyqtSignal, QKeySequence, QFont, QApplication)
-
-from calibre.ebooks.metadata import rating_to_stars
 from calibre.constants import islinux
-from calibre.gui2 import (config, available_height, available_width, gprefs,
-        rating_font)
+from calibre.ebooks.metadata import rating_to_stars
+from calibre.gui2 import (
+    available_height, available_width, config, gprefs, rating_font
+)
 from calibre_extensions import pictureflow
 
 
@@ -63,8 +67,8 @@ class DummyImageList(pictureflow.FlowImages):
     def __init__(self):
         pictureflow.FlowImages.__init__(self)
         self.num = 40000
-        i1, i2 = QImage(300, 400, QImage.Format_RGB32), QImage(300, 400, QImage.Format_RGB32)
-        i1.fill(Qt.green), i2.fill(Qt.blue)
+        i1, i2 = QImage(300, 400, QImage.Format.Format_RGB32), QImage(300, 400, QImage.Format.Format_RGB32)
+        i1.fill(Qt.GlobalColor.green), i2.fill(Qt.GlobalColor.blue)
         self.images = [i1, i2]
 
     def count(self):
@@ -86,7 +90,7 @@ class DatabaseImages(pictureflow.FlowImages):
         pictureflow.FlowImages.__init__(self)
         self.model = model
         self.is_cover_browser_visible = is_cover_browser_visible
-        self.model.modelReset.connect(self.reset, type=Qt.QueuedConnection)
+        self.model.modelReset.connect(self.reset, type=Qt.ConnectionType.QueuedConnection)
         self.ignore_image_requests = True
         self.template_inited = False
         self.subtitle_error_reported = False
@@ -94,7 +98,7 @@ class DatabaseImages(pictureflow.FlowImages):
     def init_template(self, db):
         self.template_cache = {}
         self.template_error_reported = False
-        self.template = db.pref('cover_browser_title_template', '{title}')
+        self.template = db.pref('cover_browser_title_template', '{title}') or ''
         self.template_is_title = self.template == '{title}'
         self.template_is_empty = not self.template.strip()
 
@@ -179,16 +183,22 @@ class CoverFlow(pictureflow.PictureFlow):
         pictureflow.PictureFlow.__init__(self, parent,
                             config['cover_flow_queue_length']+1)
         self.setMinimumSize(QSize(300, 150))
-        self.setFocusPolicy(Qt.WheelFocus)
-        self.setSizePolicy(QSizePolicy(QSizePolicy.Expanding,
-            QSizePolicy.Expanding))
+        self.setFocusPolicy(Qt.FocusPolicy.WheelFocus)
+        self.setSizePolicy(QSizePolicy(QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding))
         self.dc_signal.connect(self._data_changed,
-                type=Qt.QueuedConnection)
+                type=Qt.ConnectionType.QueuedConnection)
         self.context_menu = None
-        self.setContextMenuPolicy(Qt.DefaultContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.DefaultContextMenu)
         self.setPreserveAspectRatio(gprefs['cb_preserve_aspect_ratio'])
         if not gprefs['cover_browser_reflections']:
             self.setShowReflections(False)
+
+    def one_auto_scroll(self):
+        if self.currentSlide() >= self.count() - 1:
+            self.setCurrentSlide(0)
+        else:
+            self.showNext()
 
     def set_subtitle_font(self, for_ratings=True):
         if for_ratings:
@@ -230,8 +240,8 @@ class CBDialog(QDialog):
 
     closed = pyqtSignal()
 
-    def __init__(self, parent, cover_flow):
-        QDialog.__init__(self, parent)
+    def __init__(self, gui, cover_flow):
+        QDialog.__init__(self, gui)
         self._layout = QStackedLayout()
         self.setLayout(self._layout)
         self.setWindowTitle(_('Browse by covers'))
@@ -243,22 +253,27 @@ class CBDialog(QDialog):
             self.resize(w, h)
         self.action_fs_toggle = a = QAction(self)
         self.addAction(a)
-        a.setShortcuts([QKeySequence('F11', QKeySequence.PortableText),
-            QKeySequence('Ctrl+Shift+F', QKeySequence.PortableText)])
+        a.setShortcuts([QKeySequence(QKeySequence.StandardKey.FullScreen)])
         a.triggered.connect(self.toggle_fullscreen)
         self.action_esc_fs = a = QAction(self)
         a.triggered.connect(self.show_normal)
         self.addAction(a)
-        a.setShortcuts([QKeySequence('Esc', QKeySequence.PortableText)])
+        a.setShortcuts([QKeySequence('Esc', QKeySequence.SequenceFormat.PortableText)])
 
         self.pre_fs_geom = None
-        cover_flow.setFocus(Qt.OtherFocusReason)
+        cover_flow.setFocus(Qt.FocusReason.OtherFocusReason)
         self.view_action = a = QAction(self)
-        iactions = parent.iactions
+        iactions = gui.iactions
         self.addAction(a)
         a.setShortcuts(list(iactions['View'].menuless_qaction.shortcuts())+
-                [QKeySequence(Qt.Key_Space)])
+                [QKeySequence(Qt.Key.Key_Space)])
         a.triggered.connect(iactions['View'].menuless_qaction.trigger)
+
+        self.auto_scroll_action = a = QAction(self)
+        a.setShortcuts(list(iactions['Autoscroll Books'].menuless_qaction.shortcuts()))
+        self.addAction(a)
+        a.triggered.connect(iactions['Autoscroll Books'].menuless_qaction.trigger)
+
         self.sd_action = a = QAction(self)
         self.addAction(a)
         a.setShortcuts(list(iactions['Send To Device'].
@@ -295,6 +310,28 @@ class CoverFlowMixin(object):
     def __init__(self, *args, **kwargs):
         pass
 
+    def one_auto_scroll(self):
+        cb_visible = self.cover_flow is not None and self.cb_splitter.button.isChecked()
+        if cb_visible:
+            self.cover_flow.one_auto_scroll()
+        else:
+            self.library_view.show_next_book()
+
+    def toggle_auto_scroll(self):
+        if not hasattr(self, 'auto_scroll_timer'):
+            self.auto_scroll_timer = t = QTimer(self)
+            t.timeout.connect(self.one_auto_scroll)
+        if self.auto_scroll_timer.isActive():
+            self.auto_scroll_timer.stop()
+        else:
+            self.one_auto_scroll()
+            self.auto_scroll_timer.start(int(1000 * gprefs['books_autoscroll_time']))
+
+    def update_auto_scroll_timeout(self):
+        if hasattr(self, 'auto_scroll_timer') and self.auto_scroll_timer.isActive():
+            self.auto_scroll_timer.stop()
+            self.toggle_auto_scroll()
+
     def init_cover_flow_mixin(self):
         self.cover_flow = None
         self.cf_last_updated_at = None
@@ -321,7 +358,7 @@ class CoverFlowMixin(object):
             self.cb_splitter.insertWidget(self.cb_splitter.side_index, self.cover_flow)
             if CoverFlow is not None:
                 self.cover_flow.stop.connect(self.cb_splitter.hide_side_pane)
-        self.cb_splitter.button.toggled.connect(self.cover_browser_toggled, type=Qt.QueuedConnection)
+        self.cb_splitter.button.toggled.connect(self.cover_browser_toggled, type=Qt.ConnectionType.QueuedConnection)
 
     def update_cover_flow_subtitle_font(self):
         db = self.current_db.new_api
@@ -347,7 +384,7 @@ class CoverFlowMixin(object):
             self.cover_browser_hidden()
 
     def cover_browser_shown(self):
-        self.cover_flow.setFocus(Qt.OtherFocusReason)
+        self.cover_flow.setFocus(Qt.FocusReason.OtherFocusReason)
         if CoverFlow is not None:
             if self.db_images.ignore_image_requests:
                 self.db_images.ignore_image_requests = False
@@ -365,7 +402,7 @@ class CoverFlowMixin(object):
             idx = self.library_view.model().index(self.cover_flow.currentSlide(), 0)
             if idx.isValid():
                 sm = self.library_view.selectionModel()
-                sm.select(idx, sm.ClearAndSelect|sm.Rows)
+                sm.select(idx, QItemSelectionModel.SelectionFlag.ClearAndSelect|QItemSelectionModel.SelectionFlag.Rows)
                 self.library_view.setCurrentIndex(idx)
                 self.library_view.scroll_to_row(idx.row())
 
@@ -373,7 +410,7 @@ class CoverFlowMixin(object):
         d = CBDialog(self, self.cover_flow)
         d.addAction(self.cb_splitter.action_toggle)
         self.cover_flow.setVisible(True)
-        self.cover_flow.setFocus(Qt.OtherFocusReason)
+        self.cover_flow.setFocus(Qt.FocusReason.OtherFocusReason)
         d.show_fullscreen() if gprefs['cb_fullscreen'] else d.show()
         self.cb_splitter.button.set_state_to_hide()
         d.closed.connect(self.cover_browser_closed)
@@ -419,7 +456,7 @@ class CoverFlowMixin(object):
         m = self.library_view.model()
         index = m.index(row, 0)
         sm = self.library_view.selectionModel()
-        sm.select(index, sm.ClearAndSelect|sm.Rows)
+        sm.select(index, QItemSelectionModel.SelectionFlag.ClearAndSelect|QItemSelectionModel.SelectionFlag.Rows)
         self.library_view.setCurrentIndex(index)
 
     def cover_flow_do_sync(self):
@@ -444,7 +481,7 @@ class CoverFlowMixin(object):
 
 
 def test():
-    from PyQt5.Qt import QMainWindow
+    from qt.core import QMainWindow
     app = QApplication([])
     w = QMainWindow()
     cf = CoverFlow()
@@ -456,7 +493,7 @@ def test():
     w.setCentralWidget(cf)
 
     w.show()
-    cf.setFocus(Qt.OtherFocusReason)
+    cf.setFocus(Qt.FocusReason.OtherFocusReason)
     sys.exit(app.exec_())
 
 
@@ -465,7 +502,7 @@ def main(args=sys.argv):
 
 
 if __name__ == '__main__':
-    from PyQt5.Qt import QMainWindow
+    from qt.core import QMainWindow
     app = QApplication([])
     w = QMainWindow()
     cf = CoverFlow()
@@ -478,5 +515,5 @@ if __name__ == '__main__':
     w.setCentralWidget(cf)
 
     w.show()
-    cf.setFocus(Qt.OtherFocusReason)
+    cf.setFocus(Qt.FocusReason.OtherFocusReason)
     sys.exit(app.exec_())

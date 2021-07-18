@@ -36,6 +36,7 @@ defaults = {
     'current_color_scheme': 'system',
     'footer': {'right': 'progress'},
     'header': {},
+    'controls_footer': {'right': 'progress'},
     'left-margin': {},
     'right-margin': {},
     'hide_tooltips': False,
@@ -63,12 +64,19 @@ defaults = {
     'user_stylesheet': '',
     'word_actions': v'[]',
     'highlight_style': None,
+    'highlights_export_format': 'text',
     'custom_highlight_styles': v'[]',
     'show_selection_bar': True,
     'net_search_url': 'https://google.com/search?q={q}',
     'selection_bar_actions': v"['copy', 'lookup', 'highlight', 'remove_highlight', 'search_net', 'clear']",
     'selection_bar_quick_highlights': v"[]",
     'skipped_dialogs': v'{}',
+    'tts': v'{}',
+    'tts_backend': v'{}',
+    'fullscreen_when_opening': 'auto',
+    'book_search_mode': 'contains',
+    'book_search_case_sensitive': False,
+    'reverse_page_turn_zones': False,
 }
 
 is_local_setting = {
@@ -80,7 +88,6 @@ is_local_setting = {
     'columns_per_screen': True,
     'controls_help_shown_count': True,
     'controls_help_shown_count_rtl_page_progression': True,
-    'current_color_scheme': True,
     'lines_per_sec_auto': True,
     'lines_per_sec_smooth': True,
     'margin_bottom': True,
@@ -89,7 +96,6 @@ is_local_setting = {
     'margin_top': True,
     'max_text_height': True,
     'max_text_width': True,
-    'override_book_colors': True,
     'read_mode': 'paged',
     'scroll_auto_boundary_delay': True,
     'scroll_stop_boundaries': True,
@@ -98,6 +104,13 @@ is_local_setting = {
     'standalone_recently_opened': True,
     'user_stylesheet': True,
     'highlight_style': True,
+    'tts': True,
+    'tts_backend': True,
+    'fullscreen_when_opening': True,
+    'highlights_export_format': True,
+    'book_search_mode': True,
+    'book_search_case_sensitive': True,
+    'reverse_page_turn_zones': True,
 }
 
 
@@ -164,7 +177,12 @@ class SessionData:
             if defval is undefined:
                 defval = None
             return defval
-        return JSON.parse(ans)
+        try:
+            return JSON.parse(ans)
+        except:
+            if defval is undefined:
+                defval = None
+            return defval
 
     def set(self, key, value):
         key = self.global_prefix + key

@@ -5,7 +5,7 @@ __license__   = 'GPL v3'
 __copyright__ = '2009, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import textwrap, os, shlex, subprocess, glob, shutil, sys, json
+import textwrap, os, shlex, subprocess, glob, shutil, sys, json, errno
 from collections import namedtuple
 
 from setup import Command, islinux, isbsd, isfreebsd, ismacos, ishaiku, SRC, iswindows
@@ -48,8 +48,11 @@ class Extension(object):
         self.error = d['error'] = kwargs.get('error', None)
         self.libraries = d['libraries'] = kwargs.get('libraries', [])
         self.cflags = d['cflags'] = kwargs.get('cflags', [])
+        self.uses_icu = 'icuuc' in self.libraries
         if iswindows:
             self.cflags.append('/DCALIBRE_MODINIT_FUNC=PyMODINIT_FUNC')
+            if self.needs_cxx and kwargs.get('needs_c++14'):
+                self.cflags.insert(0, '/std:c++14')
         else:
             return_type = 'PyObject*'
             extern_decl = 'extern "C"' if self.needs_cxx else ''
@@ -58,10 +61,14 @@ class Extension(object):
                 '-DCALIBRE_MODINIT_FUNC='
                 '{} __attribute__ ((visibility ("default"))) {}'.format(extern_decl, return_type))
 
-            if not self.needs_cxx and kwargs.get('needs_c99'):
-                self.cflags.insert(0, '-std=c99')
-            if self.needs_cxx and kwargs.get('needs_c++11'):
-                self.cflags.insert(0, '-std=c++11')
+            if self.needs_cxx:
+                if kwargs.get('needs_c++11'):
+                    self.cflags.insert(0, '-std=c++11')
+                elif kwargs.get('needs_c++14'):
+                    self.cflags.insert(0, '-std=c++14')
+            else:
+                if kwargs.get('needs_c99'):
+                    self.cflags.insert(0, '-std=c99')
 
         self.ldflags = d['ldflags'] = kwargs.get('ldflags', [])
         self.optional = d['options'] = kwargs.get('optional', False)
@@ -155,27 +162,30 @@ def parse_extension(ext):
 def read_extensions():
     if hasattr(read_extensions, 'extensions'):
         return read_extensions.extensions
-    ans = read_extensions.extensions = json.load(open(os.path.dirname(os.path.abspath(__file__)) + '/extensions.json', 'rb'))
+    with open(os.path.dirname(os.path.abspath(__file__)) + '/extensions.json', 'rb') as f:
+        ans = read_extensions.extensions = json.load(f)
     return ans
 
 
-def init_env():
-    from setup.build_environment import msvc, is64bit, win_inc, win_lib, NMAKE
+def init_env(debug=False, sanitize=False):
+    from setup.build_environment import win_ld, is64bit, win_inc, win_lib, NMAKE, win_cc
     from distutils import sysconfig
     linker = None
     if isunix:
         cc = os.environ.get('CC', 'gcc')
         cxx = os.environ.get('CXX', 'g++')
-        debug = ''
-        # debug = '-ggdb'
+        debug = '-ggdb' if debug else ''
         cflags = os.environ.get('OVERRIDE_CFLAGS',
-            '-Wall -DNDEBUG %s -fno-strict-aliasing -pipe' % debug)
+            f'-Wall -DNDEBUG {debug} -fno-strict-aliasing -pipe')
         cflags = shlex.split(cflags) + ['-fPIC']
         ldflags = os.environ.get('OVERRIDE_LDFLAGS', '-Wall')
         ldflags = shlex.split(ldflags)
         cflags += shlex.split(os.environ.get('CFLAGS', ''))
         ldflags += shlex.split(os.environ.get('LDFLAGS', ''))
         cflags += ['-fvisibility=hidden']
+        if sanitize:
+            cflags.append('-fsanitize-address')
+            ldflags.append('-shared-libasan')
 
     if islinux:
         cflags.append('-pthread')
@@ -205,9 +215,14 @@ def init_env():
         cflags.append('-I'+sysconfig.get_python_inc())
 
     if iswindows:
-        cc = cxx = msvc.cc
-        cflags = '/c /nologo /MD /W3 /EHsc /utf-8 /DNDEBUG'.split()
-        ldflags = '/DLL /nologo /INCREMENTAL:NO /NODEFAULTLIB:libcmt.lib'.split()
+        cc = cxx = win_cc
+        cflags = '/c /nologo /W3 /EHsc /utf-8'.split()
+        cflags.append('/Zi' if debug else '/DNDEBUG')
+        suffix = ('d' if debug else '')
+        cflags.append('/MD' + suffix)
+        ldflags = f'/DLL /nologo /INCREMENTAL:NO /NODEFAULTLIB:libcmt{suffix}.lib'.split()
+        if debug:
+            ldflags.append('/DEBUG')
         # cflags = '/c /nologo /Ox /MD /W3 /EHsc /Zi'.split()
         # ldflags = '/DLL /nologo /INCREMENTAL:NO /DEBUG'.split()
         if is64bit:
@@ -220,7 +235,7 @@ def init_env():
                 ldflags.append('/LIBPATH:'+p)
         cflags.append('-I%s'%sysconfig.get_python_inc())
         ldflags.append('/LIBPATH:'+os.path.join(sysconfig.PREFIX, 'libs'))
-        linker = msvc.linker
+        linker = win_ld
     return namedtuple('Environment', 'cc cxx cflags ldflags linker make')(
         cc=cc, cxx=cxx, cflags=cflags, ldflags=ldflags, linker=linker, make=NMAKE if iswindows else 'make')
 
@@ -260,13 +275,25 @@ class Build(Command):
             help='Path to directory in which to place object files during the build process, defaults to "build"')
         parser.add_option('--output-dir', default=None,
             help='Path to directory in which to place the built extensions. Defaults to src/calibre/plugins')
+        parser.add_option('--debug', default=False, action='store_true',
+            help='Build in debug mode')
+        parser.add_option('--sanitize', default=False, action='store_true',
+            help='Build with sanitization support. Run with LD_PRELOAD=$(gcc -print-file-name=libasan.so)')
+
+    def dump_db(self, name, db):
+        try:
+            with open(f'{name}_commands.json', 'w') as f:
+                json.dump(db, f, indent=2)
+        except OSError as err:
+            if err.errno != errno.EROFS:
+                raise
 
     def run(self, opts):
         from setup.parallel_build import parallel_build, create_job
         if opts.no_compile:
             self.info('--no-compile specified, skipping compilation')
             return
-        self.env = init_env()
+        self.env = init_env(debug=opts.debug)
         all_extensions = map(parse_extension, filter(is_ext_allowed, read_extensions()))
         self.build_dir = os.path.abspath(opts.build_dir or self.DEFAULT_BUILDDIR)
         self.output_dir = os.path.abspath(opts.output_dir or self.DEFAULT_OUTPUTDIR)
@@ -290,22 +317,25 @@ class Build(Command):
         jobs = []
         objects_map = {}
         self.info(f'Building {len(extensions)+len(pyqt_extensions)} extensions')
+        ccdb = []
         for (ext, dest) in extensions:
-            cmds, objects = self.get_compile_commands(ext, dest)
+            cmds, objects = self.get_compile_commands(ext, dest, ccdb)
             objects_map[id(ext)] = objects
             for cmd in cmds:
                 jobs.append(create_job(cmd.cmd))
+        self.dump_db('compile', ccdb)
         if jobs:
             self.info(f'Compiling {len(jobs)} files...')
             if not parallel_build(jobs, self.info):
                 raise SystemExit(1)
-        jobs, link_commands = [], []
+        jobs, link_commands, lddb = [], [], []
         for (ext, dest) in extensions:
             objects = objects_map[id(ext)]
-            cmd = self.get_link_command(ext, dest, objects)
+            cmd = self.get_link_command(ext, dest, objects, lddb)
             if cmd is not None:
                 link_commands.append(cmd)
                 jobs.append(create_job(cmd.cmd))
+        self.dump_db('link', lddb)
         if jobs:
             self.info(f'Linking {len(jobs)} files...')
             if not parallel_build(jobs, self.info):
@@ -316,10 +346,10 @@ class Build(Command):
         jobs = []
         sbf_map = {}
         for (ext, dest) in pyqt_extensions:
-            cmd, sbf = self.get_sip_commands(ext)
+            cmd, sbf, cwd = self.get_sip_commands(ext)
             sbf_map[id(ext)] = sbf
             if cmd is not None:
-                jobs.append(create_job(cmd))
+                jobs.append(create_job(cmd, cwd=cwd))
         if jobs:
             self.info(f'SIPing {len(jobs)} files...')
             if not parallel_build(jobs, self.info):
@@ -348,7 +378,7 @@ class Build(Command):
         suff = '.lib' if iswindows else ''
         return [pref+x+suff for x in dirs]
 
-    def get_compile_commands(self, ext, dest):
+    def get_compile_commands(self, ext, dest, db):
         compiler = self.env.cxx if ext.needs_cxx else self.env.cc
         objects = []
         ans = []
@@ -359,31 +389,34 @@ class Build(Command):
         for src in ext.sources:
             obj = self.j(obj_dir, os.path.splitext(self.b(src))[0]+'.o')
             objects.append(obj)
+            inf = '/Tp' if src.endswith('.cpp') or src.endswith('.cxx') else '/Tc'
+            sinc = [inf+src] if iswindows else ['-c', src]
+            oinc = ['/Fo'+obj] if iswindows else ['-o', obj]
+            cmd = [compiler] + self.env.cflags + ext.cflags + einc + sinc + oinc
+            db.append({'arguments': cmd, 'directory': os.getcwd(), 'file': os.path.relpath(src, os.getcwd()), 'output': os.path.relpath(obj, os.getcwd())})
             if self.newer(obj, [src]+ext.headers):
-                inf = '/Tp' if src.endswith('.cpp') or src.endswith('.cxx') else '/Tc'
-                sinc = [inf+src] if iswindows else ['-c', src]
-                oinc = ['/Fo'+obj] if iswindows else ['-o', obj]
-                cmd = [compiler] + self.env.cflags + ext.cflags + einc + sinc + oinc
                 ans.append(CompileCommand(cmd, src, obj))
         return ans, objects
 
-    def get_link_command(self, ext, dest, objects):
+    def get_link_command(self, ext, dest, objects, lddb):
         compiler = self.env.cxx if ext.needs_cxx else self.env.cc
         linker = self.env.linker if iswindows else compiler
         dest = self.dest(ext)
         elib = self.lib_dirs_to_ldflags(ext.lib_dirs)
         xlib = self.libraries_to_ldflags(ext.libraries)
+        cmd = [linker]
+        if iswindows:
+            pre_ld_flags = []
+            if ext.uses_icu:
+                # windows has its own ICU libs that dont work
+                pre_ld_flags = elib
+            cmd += pre_ld_flags + self.env.ldflags + ext.ldflags + elib + xlib + \
+                ['/EXPORT:' + init_symbol_name(ext.name)] + objects + ext.extra_objs + ['/OUT:'+dest]
+        else:
+            cmd += objects + ext.extra_objs + ['-o', dest] + self.env.ldflags + ext.ldflags + elib + xlib
+        lddb.append({'arguments': cmd, 'directory': os.getcwd(), 'output': os.path.relpath(dest, os.getcwd())})
+
         if self.newer(dest, objects+ext.extra_objs):
-            cmd = [linker]
-            if iswindows:
-                pre_ld_flags = []
-                if ext.name in ('icu', 'matcher'):
-                    # windows has its own ICU libs that dont work
-                    pre_ld_flags = elib
-                cmd += pre_ld_flags + self.env.ldflags + ext.ldflags + elib + xlib + \
-                    ['/EXPORT:' + init_symbol_name(ext.name)] + objects + ext.extra_objs + ['/OUT:'+dest]
-            else:
-                cmd += objects + ext.extra_objs + ['-o', dest] + self.env.ldflags + ext.ldflags + elib + xlib
             return LinkCommand(cmd, objects, dest)
 
     def post_link_cleanup(self, link_command):
@@ -399,7 +432,7 @@ class Build(Command):
 
         If something is missing (qmake e.g.) you get a non-informative error
          self.check_call(qmc + [ext.name+'.pro'])
-         so you would have to look a the source to see the actual command.
+         so you would have to look at the source to see the actual command.
         """
         try:
             subprocess.check_call(*args, **kwargs)
@@ -470,6 +503,10 @@ class Build(Command):
             os.rename(self.j(self.d(target), 'libheadless.dylib'), self.j(self.d(target), 'headless.so'))
 
     def create_sip_build_skeleton(self, src_dir, ext):
+        from setup.build_environment import pyqt_sip_abi_version
+        abi_version = ''
+        if pyqt_sip_abi_version():
+            abi_version = f'abi-version = "{pyqt_sip_abi_version()}"'
         sipf = ext.sip_files[0]
         needs_exceptions = 'true' if ext.needs_exceptions else 'false'
         with open(os.path.join(src_dir, 'pyproject.toml'), 'w') as f:
@@ -487,7 +524,7 @@ project-factory = "pyqtbuild:PyQtProject"
 
 [tool.sip.project]
 sip-files-dir = "."
-sip-module = "PyQt5.sip"
+{abi_version}
 
 [tool.sip.bindings.pictureflow]
 headers = {ext.headers}
@@ -507,16 +544,18 @@ sip-file = "{os.path.basename(sipf)}"
         sipf = ext.sip_files[0]
         sbf = self.j(src_dir, self.b(sipf)+'.sbf')
         cmd = None
+        cwd = None
         if self.newer(sbf, [sipf] + ext.headers + ext.sources):
             shutil.rmtree(src_dir, ignore_errors=True)
             os.makedirs(src_dir)
             self.create_sip_build_skeleton(src_dir, ext)
+            cwd = src_dir
             cmd = [
                 sys.executable, '-c',
-                f'''import os; os.chdir({src_dir!r}); from sipbuild.tools.build import main; main();''',
+                '''from sipbuild.tools.build import main; main();''',
                 '--verbose', '--no-make', '--qmake', QMAKE
             ]
-        return cmd, sbf
+        return cmd, sbf, cwd
 
     def build_pyqt_extension(self, ext, dest, sbf):
         self.info(f'\n####### Building {ext.name} extension', '#'*7)
@@ -524,15 +563,6 @@ sip-file = "{os.path.basename(sipf)}"
         cwd = os.getcwd()
         try:
             os.chdir(os.path.join(src_dir, 'build'))
-            if ext.needs_exceptions:
-                # bug in sip-build
-                for q in walk('.'):
-                    if os.path.basename(q) in ('Makefile',):
-                        with open(q, 'r+') as f:
-                            raw = f.read()
-                            raw = raw.replace('-fno-exceptions', '-fexceptions')
-                            f.seek(0), f.truncate()
-                            f.write(raw)
             self.check_call([self.env.make] + ([] if iswindows else ['-j%d'%(os.cpu_count() or 1)]))
             e = 'pyd' if iswindows else 'so'
             m = glob.glob(f'{ext.name}/{ext.name}.*{e}')

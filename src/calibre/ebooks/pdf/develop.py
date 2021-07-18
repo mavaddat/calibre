@@ -5,8 +5,8 @@
 
 import sys
 
-from PyQt5.Qt import QApplication, QUrl, QPageLayout, QPageSize, QMarginsF
-from PyQt5.QtWebEngineWidgets import QWebEnginePage
+from qt.core import QApplication, QUrl, QPageLayout, QPageSize, QMarginsF
+from qt.webengine import QWebEnginePage
 
 from calibre.gui2 import load_builtin_fonts, must_use_qt
 from calibre.utils.podofo import get_podofo
@@ -17,7 +17,7 @@ OUTPUT = '/t/dev.pdf'
 class Renderer(QWebEnginePage):
 
     def do_print(self, ok):
-        p = QPageLayout(QPageSize(QPageSize(QPageSize.A4)), QPageLayout.Portrait, QMarginsF(72, 0, 72, 0))
+        p = QPageLayout(QPageSize(QPageSize(QPageSize.PageSizeId.A4)), QPageLayout.Orientation.Portrait, QMarginsF(72, 0, 72, 0))
         self.printToPdf(self.print_finished, p)
 
     def print_finished(self, pdf_data):

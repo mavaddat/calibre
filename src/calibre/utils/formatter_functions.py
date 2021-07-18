@@ -13,6 +13,7 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 import inspect, re, traceback, numbers
+from datetime import datetime, timedelta
 from math import trunc, floor, ceil, modf
 
 from calibre import human_readable, prints
@@ -146,7 +147,7 @@ class BuiltinFormatterFunction(FormatterFunction):
     def __init__(self):
         formatter_functions().register_builtin(self)
         eval_func = inspect.getmembers(self.__class__,
-                        lambda x: inspect.ismethod(x) and x.__name__ == 'evaluate')
+                        lambda x: inspect.isfunction(x) and x.__name__ == 'evaluate')
         try:
             lines = [l[4:] for l in inspect.getsourcelines(eval_func[0][1])[0]]
         except:
@@ -160,7 +161,8 @@ class BuiltinStrcmp(BuiltinFormatterFunction):
     category = 'Relational'
     __doc__ = doc = _('strcmp(x, y, lt, eq, gt) -- does a case-insensitive comparison of x '
             'and y as strings. Returns lt if x < y. Returns eq if x == y. '
-            'Otherwise returns gt.')
+            'Otherwise returns gt. In many cases the lexical comparison operators '
+            '(>, <, == etc) can replace this function.')
 
     def evaluate(self, formatter, kwargs, mi, locals, x, y, lt, eq, gt):
         v = strcmp(x, y)
@@ -176,7 +178,9 @@ class BuiltinCmp(BuiltinFormatterFunction):
     category = 'Relational'
     arg_count = 5
     __doc__ = doc =   _('cmp(x, y, lt, eq, gt) -- compares x and y after converting both to '
-            'numbers. Returns lt if x < y. Returns eq if x == y. Otherwise returns gt.')
+            'numbers. Returns lt if x < y. Returns eq if x == y. Otherwise returns gt. '
+            'In many cases the numeric comparison operators '
+            '(>#, <#, ==# etc) can replace this function.')
 
     def evaluate(self, formatter, kwargs, mi, locals, x, y, lt, eq, gt):
         x = float(x if x and x != 'None' else 0)
@@ -192,7 +196,7 @@ class BuiltinFirstMatchingCmp(BuiltinFormatterFunction):
     name = 'first_matching_cmp'
     category = 'Relational'
     arg_count = -1
-    __doc__ = doc =   _('first_matching_cmp(val, cmp1, result1, cmp2, r2, ..., else_result) -- '
+    __doc__ = doc =   _('first_matching_cmp(val, [cmp1, result1,]+, else_result) -- '
             'compares "val < cmpN" in sequence, returning resultN for '
             'the first comparison that succeeds. Returns else_result '
             'if no comparison succeeds. Example: '
@@ -214,7 +218,7 @@ class BuiltinStrcat(BuiltinFormatterFunction):
     name = 'strcat'
     arg_count = -1
     category = 'String manipulation'
-    __doc__ = doc = _('strcat(a, b, ...) -- can take any number of arguments. Returns a '
+    __doc__ = doc = _('strcat(a [, b]*) -- can take any number of arguments. Returns the '
             'string formed by concatenating all the arguments')
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
@@ -241,21 +245,28 @@ class BuiltinStrlen(BuiltinFormatterFunction):
 
 class BuiltinAdd(BuiltinFormatterFunction):
     name = 'add'
-    arg_count = 2
+    arg_count = -1
     category = 'Arithmetic'
-    __doc__ = doc = _('add(x, y) -- returns x + y. Throws an exception if either x or y are not numbers.')
+    __doc__ = doc = _('add(x [, y]*) -- returns the sum of its arguments. '
+                      'Throws an exception if an argument is not a number. '
+                      'This function can often be '
+                      'replaced with the + operator.')
 
-    def evaluate(self, formatter, kwargs, mi, locals, x, y):
-        x = float(x if x and x != 'None' else 0)
-        y = float(y if y and y != 'None' else 0)
-        return unicode_type(x + y)
+    def evaluate(self, formatter, kwargs, mi, locals, *args):
+        res = 0
+        for v in args:
+            v = float(v if v and v != 'None' else 0)
+            res += v
+        return unicode_type(res)
 
 
 class BuiltinSubtract(BuiltinFormatterFunction):
     name = 'subtract'
     arg_count = 2
     category = 'Arithmetic'
-    __doc__ = doc = _('subtract(x, y) -- returns x - y. Throws an exception if either x or y are not numbers.')
+    __doc__ = doc = _('subtract(x, y) -- returns x - y. Throws an exception if '
+                      'either x or y are not numbers. This function can often be '
+                      'replaced with the - operator.')
 
     def evaluate(self, formatter, kwargs, mi, locals, x, y):
         x = float(x if x and x != 'None' else 0)
@@ -265,21 +276,27 @@ class BuiltinSubtract(BuiltinFormatterFunction):
 
 class BuiltinMultiply(BuiltinFormatterFunction):
     name = 'multiply'
-    arg_count = 2
+    arg_count = -1
     category = 'Arithmetic'
-    __doc__ = doc = _('multiply(x, y) -- returns x * y. Throws an exception if either x or y are not numbers.')
+    __doc__ = doc = _('multiply(x [, y]*) -- returns the product of its arguments. '
+                      'Throws an exception if any argument is not a number. '
+                      'This function can often be replaced with the * operator.')
 
-    def evaluate(self, formatter, kwargs, mi, locals, x, y):
-        x = float(x if x and x != 'None' else 0)
-        y = float(y if y and y != 'None' else 0)
-        return unicode_type(x * y)
+    def evaluate(self, formatter, kwargs, mi, locals, *args):
+        res = 1
+        for v in args:
+            v = float(v if v and v != 'None' else 0)
+            res *= v
+        return unicode_type(res)
 
 
 class BuiltinDivide(BuiltinFormatterFunction):
     name = 'divide'
     arg_count = 2
     category = 'Arithmetic'
-    __doc__ = doc = _('divide(x, y) -- returns x / y. Throws an exception if either x or y are not numbers.')
+    __doc__ = doc = _('divide(x, y) -- returns x / y. Throws an exception if '
+                      'either x or y are not numbers.'
+                      ' This function can often be replaced with the / operator.')
 
     def evaluate(self, formatter, kwargs, mi, locals, x, y):
         x = float(x if x and x != 'None' else 0)
@@ -329,9 +346,8 @@ class BuiltinMod(BuiltinFormatterFunction):
     name = 'mod'
     arg_count = 2
     category = 'Arithmetic'
-    __doc__ = doc = _('mod(x) -- returns the remainder of x / y, where x, y, '
-                      'and the result are integers. Throws an exception if '
-                      'either x or y is not a number.')
+    __doc__ = doc = _('mod(x) -- returns floor(remainder of x / y). '
+                      'Throws an exception if either x or y is not a number.')
 
     def evaluate(self, formatter, kwargs, mi, locals, x, y):
         x = float(x if x and x != 'None' else 0)
@@ -397,18 +413,39 @@ class BuiltinAssign(BuiltinFormatterFunction):
     arg_count = 2
     category = 'Other'
     __doc__ = doc = _('assign(id, val) -- assigns val to id, then returns val. '
-            'id must be an identifier, not an expression')
+            'id must be an identifier, not an expression. '
+            'This function can often be replaced with the = operator.')
 
     def evaluate(self, formatter, kwargs, mi, locals, target, value):
         locals[target] = value
         return value
 
 
+class BuiltinListSplit(BuiltinFormatterFunction):
+    name = 'list_split'
+    arg_count = 3
+    category = 'List manipulation'
+    __doc__ = doc = _('list_split(list_val, sep, id_prefix) -- splits the list_val '
+                    "into separate values using 'sep', then assigns the values "
+                    "to variables named 'id_prefix_N' where N is the position "
+                    "of the value in the list. The first item has position 0 (zero). "
+                    "The function returns the last element in the list. "
+                    "Example: split('one:two:foo', ':', 'var') is equivalent "
+                    "to var_0 = 'one'; var_1 = 'two'; var_2 = 'foo'.")
+
+    def evaluate(self, formatter, kwargs, mi, locals, list_val, sep, id_prefix):
+        l = [v.strip() for v in list_val.split(sep)]
+        res = ''
+        for i,v in enumerate(l):
+            res = locals[id_prefix+'_'+unicode_type(i)] = v
+        return res
+
+
 class BuiltinPrint(BuiltinFormatterFunction):
     name = 'print'
     arg_count = -1
     category = 'Other'
-    __doc__ = doc = _('print(a, b, ...) -- prints the arguments to standard output. '
+    __doc__ = doc = _('print(a[, b]*) -- prints the arguments to standard output. '
             'Unless you start calibre from the command line (calibre-debug -g), '
             'the output will go to a black hole.')
 
@@ -421,7 +458,7 @@ class BuiltinField(BuiltinFormatterFunction):
     name = 'field'
     arg_count = 1
     category = 'Get values from metadata'
-    __doc__ = doc = _('field(name) -- returns the metadata field named by name')
+    __doc__ = doc = _('field(lookup_name) -- returns the metadata field named by lookup_name')
 
     def evaluate(self, formatter, kwargs, mi, locals, name):
         return formatter.get_value(name, [], kwargs)
@@ -429,13 +466,17 @@ class BuiltinField(BuiltinFormatterFunction):
 
 class BuiltinRawField(BuiltinFormatterFunction):
     name = 'raw_field'
-    arg_count = 1
+    arg_count = -1
     category = 'Get values from metadata'
-    __doc__ = doc = _('raw_field(name) -- returns the metadata field named by name '
-            'without applying any formatting.')
+    __doc__ = doc = _('raw_field(lookup_name [, optional_default]) -- returns the '
+            'metadata field named by lookup_name without applying any formatting. '
+            'It evaluates and returns the optional second argument '
+            "'default' if the field is undefined ('None').")
 
-    def evaluate(self, formatter, kwargs, mi, locals, name):
+    def evaluate(self, formatter, kwargs, mi, locals, name, default=None):
         res = getattr(mi, name, None)
+        if res is None and default is not None:
+            return default
         if isinstance(res, list):
             fm = mi.metadata_for_field(name)
             if fm is None:
@@ -448,8 +489,8 @@ class BuiltinRawList(BuiltinFormatterFunction):
     name = 'raw_list'
     arg_count = 2
     category = 'Get values from metadata'
-    __doc__ = doc = _('raw_list(name, separator) -- returns the metadata list '
-            'named by name without applying any formatting or sorting and '
+    __doc__ = doc = _('raw_list(lookup_name, separator) -- returns the metadata list '
+            'named by lookup_name without applying any formatting or sorting and '
             'with items separated by separator.')
 
     def evaluate(self, formatter, kwargs, mi, locals, name, separator):
@@ -478,7 +519,7 @@ class BuiltinLookup(BuiltinFormatterFunction):
     name = 'lookup'
     arg_count = -1
     category = 'Iterating over values'
-    __doc__ = doc = _('lookup(val, pattern, field, pattern, field, ..., else_field) -- '
+    __doc__ = doc = _('lookup(val, [pattern, field,]+ else_field) -- '
             'like switch, except the arguments are field (metadata) names, not '
             'text. The value of the appropriate field will be fetched and used. '
             'Note that because composite columns are fields, you can use this '
@@ -538,7 +579,7 @@ class BuiltinSwitch(BuiltinFormatterFunction):
     name = 'switch'
     arg_count = -1
     category = 'Iterating over values'
-    __doc__ = doc = _('switch(val, pattern, value, pattern, value, ..., else_value) -- '
+    __doc__ = doc = _('switch(val, [pattern, value,]+ else_value) -- '
             'for each `pattern, value` pair, checks if `val` matches '
             'the regular expression `pattern` and if so, returns that '
             '`value`. If no pattern matches, then `else_value` is returned. '
@@ -560,7 +601,7 @@ class BuiltinStrcatMax(BuiltinFormatterFunction):
     name = 'strcat_max'
     arg_count = -1
     category = 'String manipulation'
-    __doc__ = doc = _('strcat_max(max, string1, prefix2, string2, ...) -- '
+    __doc__ = doc = _('strcat_max(max, string1 [, prefix2, string2]*) -- '
             'Returns a string formed by concatenating the arguments. The '
             'returned value is initialized to string1. `Prefix, string` '
             'pairs are added to the end of the value as long as the '
@@ -595,14 +636,15 @@ class BuiltinInList(BuiltinFormatterFunction):
     name = 'in_list'
     arg_count = -1
     category = 'List lookup'
-    __doc__ = doc = _('in_list(val, separator, pattern, found_val, ..., not_found_val) -- '
-            'treat val as a list of items separated by separator, '
-            'evaluating the pattern against each value in the list. If the '
-            'pattern matches a value, return found_val, otherwise return '
-            'not_found_val. The pattern and found_value can be repeated as '
-            'many times as desired, permitting returning different values '
-            'depending on the search. The patterns are checked in order. The '
-            'first match is returned.')
+    __doc__ = doc = _('in_list(val, separator, [ pattern, found_val, ]+ not_found_val) -- '
+            'treating val as a list of items separated by separator, '
+            'if the pattern matches any of the list values then return found_val.'
+            'If the pattern matches no list value then return '
+            'not_found_val. The pattern and found_value pairs can be repeated as '
+            'many times as desired. The patterns are checked in order. The '
+            'found_val for the first match is returned. '
+            'Aliases: in_list(), list_contains()')
+    aliases = ['list_contains']
 
     def evaluate(self, formatter, kwargs, mi, locals, val, sep, *args):
         if (len(args) % 2) != 1:
@@ -625,15 +667,14 @@ class BuiltinStrInList(BuiltinFormatterFunction):
     name = 'str_in_list'
     arg_count = -1
     category = 'List lookup'
-    __doc__ = doc = _('str_in_list(val, separator, string, found_val, ..., not_found_val) -- '
-            'treat val as a list of items separated by separator, '
-            'comparing the string against each value in the list. If the '
-            'string matches a value (ignoring case) then return found_val, otherwise return '
-            'not_found_val. If the string contains separators, then it is '
-            'also treated as a list and each value is checked. The string and '
-            'found_value can be repeated as many times as desired, permitting '
-            'returning different values depending on the search. The strings are '
-            'checked in order. The first match is returned.')
+    __doc__ = doc = _('str_in_list(val, separator, [string, found_val, ]+ not_found_val) -- '
+            'treating val as a list of items separated by separator, if the '
+            'string matches any of the list values then return found_val.'
+            'If the string matches no list value then return '
+            'not_found_val. The comparison is exact match (not contains) and is '
+            'case insensitive. The string and found_value pairs can be repeated as '
+            'many times as desired. The patterns are checked in order. The '
+            'found_val for the first match is returned.')
 
     def evaluate(self, formatter, kwargs, mi, locals, val, sep, *args):
         if (len(args) % 2) != 1:
@@ -698,7 +739,7 @@ class BuiltinReGroup(BuiltinFormatterFunction):
     name = 're_group'
     arg_count = -1
     category = 'String manipulation'
-    __doc__ = doc = _('re_group(val, pattern, template_for_group_1, for_group_2, ...) -- '
+    __doc__ = doc = _('re_group(val, pattern [, template_for_group]*) -- '
             'return a string made by applying the regular expression pattern '
             'to the val and replacing each matched instance with the string '
             'computed by replacing each matched group by the value returned '
@@ -787,13 +828,35 @@ class BuiltinCount(BuiltinFormatterFunction):
     name = 'count'
     arg_count = 2
     category = 'List manipulation'
+    aliases = ['list_count']
+
     __doc__ = doc = _('count(val, separator) -- interprets the value as a list of items '
             'separated by `separator`, returning the number of items in the '
             'list. Most lists use a comma as the separator, but authors '
-            'uses an ampersand. Examples: {tags:count(,)}, {authors:count(&)}')
+            'uses an ampersand. Examples: {tags:count(,)}, {authors:count(&)}. '
+            'Aliases: count(), list_count()')
 
     def evaluate(self, formatter, kwargs, mi, locals, val, sep):
         return unicode_type(len([v for v in val.split(sep) if v]))
+
+
+class BuiltinListCountMatching(BuiltinFormatterFunction):
+    name = 'list_count_matching'
+    arg_count = 3
+    category = 'List manipulation'
+    aliases = ['count_matching']
+
+    __doc__ = doc = _('list_count_matching(list, pattern, separator) -- '
+            "interprets 'list' as a list of items separated by 'separator', "
+            'returning the number of items in the list that match the regular '
+            "expression 'pattern'. Aliases: list_count_matching(), count_matching()")
+
+    def evaluate(self, formatter, kwargs, mi, locals, list_, pattern, sep):
+        res = 0
+        for v in [x.strip() for x in list_.split(sep) if x.strip()]:
+            if re.search(pattern, v, flags=re.I):
+                res += 1
+        return unicode_type(res)
 
 
 class BuiltinListitem(BuiltinFormatterFunction):
@@ -824,16 +887,18 @@ class BuiltinSelect(BuiltinFormatterFunction):
     category = 'List lookup'
     __doc__ = doc = _('select(val, key) -- interpret the value as a comma-separated list '
             'of items, with the items being "id:value". Find the pair with the '
-            'id equal to key, and return the corresponding value.'
+            'id equal to key, and return the corresponding value. Returns the '
+            'empty string if no match is found.'
             )
 
     def evaluate(self, formatter, kwargs, mi, locals, val, key):
         if not val:
             return ''
         vals = [v.strip() for v in val.split(',')]
+        tkey = key+':'
         for v in vals:
-            if v.startswith(key+':'):
-                return v[len(key)+1:]
+            if v.startswith(tkey):
+                return v[len(tkey):]
         return ''
 
 
@@ -1043,7 +1108,7 @@ class BuiltinSubitems(BuiltinFormatterFunction):
         si = int(start_index)
         ei = int(end_index)
         has_periods = '.' in val
-        items = [v.strip() for v in val.split(',')]
+        items = [v.strip() for v in val.split(',') if v.strip()]
         rv = set()
         for item in items:
             if has_periods and '.' in item:
@@ -1052,9 +1117,11 @@ class BuiltinSubitems(BuiltinFormatterFunction):
                 components = [item]
             try:
                 if ei == 0:
-                    rv.add('.'.join(components[si:]))
+                    t = '.'.join(components[si:]).strip()
                 else:
-                    rv.add('.'.join(components[si:ei]))
+                    t = '.'.join(components[si:ei]).strip()
+                if t:
+                    rv.add(t)
             except:
                 pass
         return ', '.join(sorted(rv, key=sort_key))
@@ -1085,14 +1152,23 @@ class BuiltinFormatDate(BuiltinFormatterFunction):
             'ss   : the seconds with a leading 0 (00 to 59) '
             'ap   : use a 12-hour clock instead of a 24-hour clock, with "ap" replaced by the localized string for am or pm '
             'AP   : use a 12-hour clock instead of a 24-hour clock, with "AP" replaced by the localized string for AM or PM '
-            'iso  : the date with time and timezone. Must be the only format present')
+            'iso  : the date with time and timezone. Must be the only format present '
+            'to_number: the date as a floating point number '
+            'from_number[:fmt]: format the timestamp using fmt if present otherwise iso')
 
     def evaluate(self, formatter, kwargs, mi, locals, val, format_string):
         if not val or val == 'None':
             return ''
         try:
-            dt = parse_date(val)
-            s = format_date(dt, format_string)
+            if format_string == 'to_number':
+                s = parse_date(val).timestamp()
+            elif format_string.startswith('from_number'):
+                val = datetime.fromtimestamp(float(val))
+                f = format_string[12:]
+                s = format_date(val, f if f else 'iso')
+            else:
+                s = format_date(parse_date(val), format_string)
+            return s
         except:
             s = 'BAD DATE'
         return s
@@ -1201,6 +1277,27 @@ class BuiltinAnnotationCount(BuiltinFormatterFunction):
         return _('This function can be used only in the GUI')
 
 
+class BuiltinIsMarked(BuiltinFormatterFunction):
+    name = 'is_marked'
+    arg_count = 0
+    category = 'Get values from metadata'
+    __doc__ = doc = _("is_marked() -- check whether the book is 'marked' in "
+                      "calibre. If it is then return the value of the mark, "
+                      "either 'true' or the comma-separated list of named "
+                      "marks. Returns '' if the book is not marked.")
+
+    def evaluate(self, formatter, kwargs, mi, locals):
+        if hasattr(mi, '_proxy_metadata'):
+            try:
+                from calibre.gui2.ui import get_gui
+                c = get_gui().current_db.data.get_marked(mi.id)
+                return c if c else ''
+            except:
+                return _('Failed to get marked status')
+            return ''
+        return _('This function can be used only in the GUI')
+
+
 class BuiltinSeriesSort(BuiltinFormatterFunction):
     name = 'series_sort'
     arg_count = 0
@@ -1230,9 +1327,9 @@ class BuiltinFirstNonEmpty(BuiltinFormatterFunction):
     name = 'first_non_empty'
     arg_count = -1
     category = 'Iterating over values'
-    __doc__ = doc = _('first_non_empty(value, value, ...) -- '
+    __doc__ = doc = _('first_non_empty(value [, value]*) -- '
             'returns the first value that is not empty. If all values are '
-            'empty, then the empty value is returned. '
+            'empty, then the empty string is returned. '
             'You can have as many values as you want.')
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
@@ -1248,10 +1345,11 @@ class BuiltinAnd(BuiltinFormatterFunction):
     name = 'and'
     arg_count = -1
     category = 'Boolean'
-    __doc__ = doc = _('and(value, value, ...) -- '
+    __doc__ = doc = _('and(value [, value]*) -- '
             'returns the string "1" if all values are not empty, otherwise '
             'returns the empty string. This function works well with test or '
-            'first_non_empty. You can have as many values as you want. ')
+            'first_non_empty. You can have as many values as you want. In many '
+            'cases the && operator can replace this function.')
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         i = 0
@@ -1266,10 +1364,11 @@ class BuiltinOr(BuiltinFormatterFunction):
     name = 'or'
     arg_count = -1
     category = 'Boolean'
-    __doc__ = doc = _('or(value, value, ...) -- '
+    __doc__ = doc = _('or(value [, value]*) -- '
             'returns the string "1" if any value is not empty, otherwise '
             'returns the empty string. This function works well with test or '
-            'first_non_empty. You can have as many values as you want.')
+            'first_non_empty. You can have as many values as you want.  In many '
+            'cases the || operator can replace this function.')
 
     def evaluate(self, formatter, kwargs, mi, locals, *args):
         i = 0
@@ -1287,7 +1386,8 @@ class BuiltinNot(BuiltinFormatterFunction):
     __doc__ = doc = _('not(value) -- '
             'returns the string "1" if the value is empty, otherwise '
             'returns the empty string. This function works well with test or '
-            'first_non_empty.')
+            'first_non_empty.  In many cases the ! operator can replace this '
+            'function.')
 
     def evaluate(self, formatter, kwargs, mi, locals, val):
         return '' if val else '1'
@@ -1302,20 +1402,32 @@ class BuiltinListUnion(BuiltinFormatterFunction):
             'removing duplicate items using a case-insensitive comparison. If '
             'items differ in case, the one in list1 is used. '
             'The items in list1 and list2 are separated by separator, as are '
-            'the items in the returned list.')
+            'the items in the returned list. Aliases: list_union(), merge_lists()')
     aliases = ['merge_lists']
 
     def evaluate(self, formatter, kwargs, mi, locals, list1, list2, separator):
-        res = [l.strip() for l in list1.split(separator) if l.strip()]
-        l2 = [l.strip() for l in list2.split(separator) if l.strip()]
-        lcl1 = {icu_lower(l) for l in res}
-
-        for i in l2:
-            if icu_lower(i) not in lcl1 and i not in res:
-                res.append(i)
+        res = {icu_lower(l.strip()): l.strip() for l in list2.split(separator) if l.strip()}
+        res.update({icu_lower(l.strip()): l.strip() for l in list1.split(separator) if l.strip()})
         if separator == ',':
-            return ', '.join(res)
-        return separator.join(res)
+            separator = ', '
+        return separator.join(res.values())
+
+
+class BuiltinListRemoveDuplicates(BuiltinFormatterFunction):
+    name = 'list_remove_duplicates'
+    arg_count = 2
+    category = 'List manipulation'
+    __doc__ = doc = _('list_remove_duplicates(list, separator) -- '
+            'return a list made by removing duplicate items in the source list. '
+            'If items differ only in case, the last of them is returned. '
+            'The items in source list are separated by separator, as are '
+            'the items in the returned list.')
+
+    def evaluate(self, formatter, kwargs, mi, locals, list_, separator):
+        res = {icu_lower(l.strip()): l.strip() for l in list_.split(separator) if l.strip()}
+        if separator == ',':
+            separator = ', '
+        return separator.join(res.values())
 
 
 class BuiltinListDifference(BuiltinFormatterFunction):
@@ -1427,9 +1539,9 @@ class BuiltinListReGroup(BuiltinFormatterFunction):
     name = 'list_re_group'
     arg_count = -1
     category = 'List manipulation'
-    __doc__ = doc = _('list_re_group(src_list, separator, include_re, search_re, group_1_template, ...) -- '
+    __doc__ = doc = _('list_re_group(src_list, separator, include_re, search_re [, group_template]+) -- '
                       'Like list_re except replacements are not optional. It '
-                      'uses re_group(list_item, search_re, group_1_template, ...) when '
+                      'uses re_group(list_item, search_re, group_template, ...) when '
                       'doing the replacements on the resulting list.')
 
     def evaluate(self, formatter, kwargs, mi, locals, src_list, separator, include_re,
@@ -1498,6 +1610,55 @@ class BuiltinDaysBetween(BuiltinFormatterFunction):
             return ''
         i = d1 - d2
         return '%.1f'%(i.days + (i.seconds/(24.0*60.0*60.0)))
+
+
+class BuiltinDateArithmetic(BuiltinFormatterFunction):
+    name = 'date_arithmetic'
+    arg_count = -1
+    category = 'Date functions'
+    __doc__ = doc = _('date_arithmetic(date, calc_spec, fmt) -- '
+            "Calculate a new date from 'date' using 'calc_spec'. Return the "
+            "new date formatted according to optional 'fmt': if not supplied "
+            "then the result will be in iso format. The calc_spec is a string "
+            "formed by concatenating pairs of 'vW' (valueWhat) where 'v' is a "
+            "possibly-negative number and W is one of the following letters: "
+            "s: add 'v' seconds to 'date' "
+            "m: add 'v' minutes to 'date' "
+            "h: add 'v' hours to 'date' "
+            "d: add 'v' days to 'date' "
+            "w: add 'v' weeks to 'date' "
+            "y: add 'v' years to 'date', where a year is 365 days. "
+            "Example: '1s3d-1m' will add 1 second, add 3 days, and subtract 1 "
+            "minute from 'date'.")
+
+    calc_ops = {
+        's': lambda v: timedelta(seconds=v),
+        'm': lambda v: timedelta(minutes=v),
+        'h': lambda v: timedelta(hours=v),
+        'd': lambda v: timedelta(days=v),
+        'w': lambda v: timedelta(weeks=v),
+        'y': lambda v: timedelta(days=v * 365),
+    }
+
+    def evaluate(self, formatter, kwargs, mi, locals, date, calc_spec, fmt=None):
+        try:
+            d = parse_date(date)
+            if d == UNDEFINED_DATE:
+                return ''
+            while calc_spec:
+                mo = re.match(r'([-+\d]+)([smhdwy])', calc_spec)
+                if mo is None:
+                    raise ValueError(
+                        _("{0}: invalid calculation specifier '{1}'").format(
+                            'date_arithmetic', calc_spec))
+                d += self.calc_ops[mo[2]](int(mo[1]))
+                calc_spec = calc_spec[len(mo[0]):]
+            return format_date(d, fmt if fmt else 'iso')
+        except ValueError as e:
+            raise e
+        except Exception as e:
+            traceback.print_exc()
+            raise ValueError(_("{0}: error: {1}").format('date_arithmetic', str(e)))
 
 
 class BuiltinLanguageStrings(BuiltinFormatterFunction):
@@ -1602,7 +1763,9 @@ class BuiltinVirtualLibraries(BuiltinFormatterFunction):
 
     def evaluate(self, formatter, kwargs, mi, locals_):
         if hasattr(mi, '_proxy_metadata'):
-            return mi._proxy_metadata.virtual_libraries
+            from calibre.gui2.ui import get_gui
+            a = get_gui().current_db.data.get_virtual_libraries_for_books((mi.id,))
+            return ', '.join(a[mi.id])
         return _('This function can be used only in the GUI')
 
 
@@ -1722,6 +1885,40 @@ class BuiltinConnectedDeviceName(BuiltinFormatterFunction):
         return _('This function can be used only in the GUI')
 
 
+class BuiltinConnectedDeviceUUID(BuiltinFormatterFunction):
+    name = 'connected_device_uuid'
+    arg_count = 1
+    category = 'Get values from metadata'
+    __doc__ = doc = _("connected_device_uuid(storage_location) -- if a device is "
+                      "connected then return the device uuid (unique id), "
+                      "otherwise return the empty string. Each storage location "
+                      "on a device has a different uuid. The location names are "
+                      "'main', 'carda' and 'cardb'. This function works only in "
+                      "the GUI.")
+
+    def evaluate(self, formatter, kwargs, mi, locals, storage_location):
+        if hasattr(mi, '_proxy_metadata'):
+            # Do the import here so that we don't entangle the GUI when using
+            # command line functions
+            from calibre.gui2.ui import get_gui
+            info = get_gui().device_manager.get_current_device_information()
+            if info is None:
+                return ''
+            try:
+                if storage_location not in {'main', 'carda', 'cardb'}:
+                    raise ValueError(
+                         _('connected_device_name: invalid storage location "{0}"'
+                                    .format(storage_location)))
+                info = info['info'][4]
+                if storage_location not in info:
+                    return ''
+                return info[storage_location]['device_store_uuid']
+            except:
+                traceback.print_exc()
+                raise
+        return _('This function can be used only in the GUI')
+
+
 class BuiltinCheckYesNo(BuiltinFormatterFunction):
     name = 'check_yes_no'
     arg_count = 4
@@ -1804,25 +2001,116 @@ class BuiltinSwapAroundArticles(BuiltinFormatterFunction):
         return separator.join(sorted(result, key=sort_key))
 
 
+class BuiltinArguments(BuiltinFormatterFunction):
+    name = 'arguments'
+    arg_count = -1
+    category = 'other'
+    __doc__ = doc = _('arguments(id[=expression] [, id[=expression]]*) '
+                      '-- Used in a stored template to retrieve the arguments '
+                      'passed in the call. It both declares and initializes '
+                      'local variables, effectively parameters. The variables '
+                      'are positional; they get the value of the value given '
+                      'in the call in the same position. If the corresponding '
+                      'parameter is not provided in the call then arguments '
+                      'assigns that variable the provided default value. If '
+                      'there is no default value then the variable is set to '
+                      'the empty string.')
+
+    def evaluate(self, formatter, kwargs, mi, locals, *args):
+        # The arguments function is implemented in-line in the formatter
+        raise NotImplementedError()
+
+
+class BuiltinGlobals(BuiltinFormatterFunction):
+    name = 'globals'
+    arg_count = -1
+    category = 'other'
+    __doc__ = doc = _('globals(id[=expression] [, id[=expression]]*) '
+                      '-- Retrieves "global variables" that can be passed into '
+                      'the formatter. It both declares and initializes local '
+                      'variables with the names of the global variables passed '
+                      'in. If the corresponding variable is not provided in '
+                      'the passed-in globals then it assigns that variable the '
+                      'provided default value. If there is no default value '
+                      'then the variable is set to the empty string.')
+
+    def evaluate(self, formatter, kwargs, mi, locals, *args):
+        # The globals function is implemented in-line in the formatter
+        raise NotImplementedError()
+
+
+class BuiltinSetGlobals(BuiltinFormatterFunction):
+    name = 'set_globals'
+    arg_count = -1
+    category = 'other'
+    __doc__ = doc = _('globals(id[=expression] [, id[=expression]]*) '
+                      '-- Retrieves "global variables" that can be passed into '
+                      'the formatter. It both declares and initializes local '
+                      'variables with the names of the global variables passed '
+                      'in. If the corresponding variable is not provided in '
+                      'the passed-in globals then it assigns that variable the '
+                      'provided default value. If there is no default value '
+                      'then the variable is set to the empty string.')
+
+    def evaluate(self, formatter, kwargs, mi, locals, *args):
+        # The globals function is implemented in-line in the formatter
+        raise NotImplementedError()
+
+
+class BuiltinFieldExists(BuiltinFormatterFunction):
+    name = 'field_exists'
+    arg_count = 1
+    category = 'If-then-else'
+    __doc__ = doc = _('field_exists(field_name) -- checks if a field '
+                      '(column) named field_name exists, returning '
+                      "'1' if so and '' if not.")
+
+    def evaluate(self, formatter, kwargs, mi, locals, field_name):
+        if field_name.lower() in mi.all_field_keys():
+            return '1'
+        return ''
+
+
+class BuiltinCharacter(BuiltinFormatterFunction):
+    name = 'character'
+    arg_count = 1
+    category = 'String manipulation'
+    __doc__ = doc = _('character(character_name) -- returns the '
+                      'character named by character_name. For example, '
+                      r"character('newline') returns a newline character ('\n'). "
+                      "The supported character names are 'newline', 'return', "
+                      "'tab', and 'backslash'.")
+
+    def evaluate(self, formatter, kwargs, mi, locals, character_name):
+        # The globals function is implemented in-line in the formatter
+        raise NotImplementedError()
+
+
 _formatter_builtins = [
-    BuiltinAdd(), BuiltinAnd(), BuiltinApproximateFormats(), BuiltinAssign(),
+    BuiltinAdd(), BuiltinAnd(), BuiltinApproximateFormats(), BuiltinArguments(),
+    BuiltinAssign(),
     BuiltinAuthorLinks(), BuiltinAuthorSorts(), BuiltinBooksize(),
-    BuiltinCapitalize(), BuiltinCheckYesNo(), BuiltinCeiling(),
-    BuiltinCmp(), BuiltinConnectedDeviceName(), BuiltinContains(),
+    BuiltinCapitalize(), BuiltinCharacter(), BuiltinCheckYesNo(), BuiltinCeiling(),
+    BuiltinCmp(), BuiltinConnectedDeviceName(), BuiltinConnectedDeviceUUID(), BuiltinContains(),
     BuiltinCount(), BuiltinCurrentLibraryName(), BuiltinCurrentLibraryPath(),
+    BuiltinDateArithmetic(),
     BuiltinDaysBetween(), BuiltinDivide(), BuiltinEval(), BuiltinFirstNonEmpty(),
-    BuiltinField(), BuiltinFinishFormatting(), BuiltinFirstMatchingCmp(), BuiltinFloor(),
+    BuiltinField(), BuiltinFieldExists(),
+    BuiltinFinishFormatting(), BuiltinFirstMatchingCmp(), BuiltinFloor(),
     BuiltinFormatDate(), BuiltinFormatNumber(), BuiltinFormatsModtimes(),
     BuiltinFormatsPaths(), BuiltinFormatsSizes(), BuiltinFractionalPart(),
+    BuiltinGlobals(),
     BuiltinHasCover(), BuiltinHumanReadable(), BuiltinIdentifierInList(),
     BuiltinIfempty(), BuiltinLanguageCodes(), BuiltinLanguageStrings(),
-    BuiltinInList(), BuiltinListDifference(), BuiltinListEquals(),
+    BuiltinInList(), BuiltinIsMarked(), BuiltinListCountMatching(),
+    BuiltinListDifference(), BuiltinListEquals(),
     BuiltinListIntersection(), BuiltinListitem(), BuiltinListRe(),
-    BuiltinListReGroup(), BuiltinListSort(), BuiltinListUnion(), BuiltinLookup(),
+    BuiltinListReGroup(), BuiltinListRemoveDuplicates(), BuiltinListSort(),
+    BuiltinListSplit(), BuiltinListUnion(),BuiltinLookup(),
     BuiltinLowercase(), BuiltinMod(), BuiltinMultiply(), BuiltinNot(), BuiltinOndevice(),
     BuiltinOr(), BuiltinPrint(), BuiltinRatingToStars(), BuiltinRawField(), BuiltinRawList(),
     BuiltinRe(), BuiltinReGroup(), BuiltinRound(), BuiltinSelect(), BuiltinSeriesSort(),
-    BuiltinShorten(), BuiltinStrcat(), BuiltinStrcatMax(),
+    BuiltinSetGlobals(), BuiltinShorten(), BuiltinStrcat(), BuiltinStrcatMax(),
     BuiltinStrcmp(), BuiltinStrInList(), BuiltinStrlen(), BuiltinSubitems(),
     BuiltinSublist(),BuiltinSubstr(), BuiltinSubtract(), BuiltinSwapAroundArticles(),
     BuiltinSwapAroundComma(), BuiltinSwitch(),

@@ -279,7 +279,7 @@ def rewrite_links(root, link_repl_func, resolve_base_href=False):
                 el.attrib[attrib] = new
 
     parser = CSSParser(raiseExceptions=False, log=_css_logger,
-            fetcher=lambda x:(None, None))
+            fetcher=lambda x:(None, ''))
     for el in root.iter(etree.Element):
         try:
             tag = el.tag
@@ -321,6 +321,7 @@ GIF_MIME       = types_map['.gif']
 JPEG_MIME      = types_map['.jpeg']
 PNG_MIME       = types_map['.png']
 SVG_MIME       = types_map['.svg']
+WEBP_MIME      = types_map['.webp']
 BINARY_MIME    = 'application/octet-stream'
 
 XHTML_CSS_NAMESPACE = '@namespace "%s";\n' % XHTML_NS
@@ -328,7 +329,7 @@ XHTML_CSS_NAMESPACE = '@namespace "%s";\n' % XHTML_NS
 OEB_STYLES        = {CSS_MIME, OEB_CSS_MIME, 'text/x-oeb-css', 'xhtml/css'}
 OEB_DOCS          = {XHTML_MIME, 'text/html', OEB_DOC_MIME,
                          'text/x-oeb-document'}
-OEB_RASTER_IMAGES = {GIF_MIME, JPEG_MIME, PNG_MIME}
+OEB_RASTER_IMAGES = {GIF_MIME, JPEG_MIME, PNG_MIME, WEBP_MIME}
 OEB_IMAGES        = {GIF_MIME, JPEG_MIME, PNG_MIME, SVG_MIME}
 
 MS_COVER_TYPE = 'other.ms-coverimage-standard'
@@ -921,6 +922,7 @@ class Manifest(object):
             self.media_type = media_type
             self.fallback = fallback
             self.override_css_fetch = None
+            self.resolve_css_imports = True
             self.spine_position = None
             self.linear = True
             if loader is None and data is None:
@@ -985,7 +987,8 @@ class Manifest(object):
                                fetcher=self.override_css_fetch or self._fetch_css,
                                log=_css_logger)
             data = parser.parseString(data, href=self.href, validate=False)
-            data = resolveImports(data)
+            if self.resolve_css_imports:
+                data = resolveImports(data)
             for rule in tuple(data.cssRules.rulesOfType(CSSRule.PAGE_RULE)):
                 data.cssRules.remove(rule)
             return data
@@ -1052,6 +1055,9 @@ class Manifest(object):
         @data.deleter
         def data(self):
             self._data = None
+
+        def reparse_css(self):
+            self._data = self._parse_css(str(self))
 
         def unload_data_from_memory(self, memory=None):
             if isinstance(self._data, bytes):

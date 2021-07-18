@@ -7,7 +7,7 @@ __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import os
 
-from PyQt5.Qt import QTextDocument, QTextCursor, QPlainTextDocumentLayout
+from qt.core import QTextDocument, QTextCursor, QPlainTextDocumentLayout
 
 from calibre.gui2.tweak_book import tprefs
 from calibre.gui2.tweak_book.editor.text import get_highlighter as calibre_highlighter, SyntaxHighlighter
@@ -46,7 +46,7 @@ class QtHighlighter(QTextDocument):
                     afs = ()
                 for af in afs:
                     start = dest_block.position() + af.start
-                    c.setPosition(start), c.setPosition(start + af.length, c.KeepAnchor)
+                    c.setPosition(start), c.setPosition(start + af.length, QTextCursor.MoveMode.KeepAnchor)
                     c.setCharFormat(af.format)
                 cursor.insertBlock()
                 cursor.setCharFormat(NULL_FMT)

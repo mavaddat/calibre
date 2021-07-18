@@ -3,8 +3,6 @@
 from __python__ import bound_methods, hash_literals
 
 from elementmaker import E
-from gettext import gettext as _
-from uuid import short_uuid
 
 from book_list.book_details import CLASS_NAME as BD_CLASS_NAME, render_metadata
 from book_list.globals import get_session_data
@@ -13,25 +11,29 @@ from book_list.library_data import (
 )
 from book_list.router import home
 from book_list.theme import get_color
+from book_list.top_bar import create_top_bar
 from book_list.ui import query_as_href, show_panel
 from dom import (
     add_extra_css, build_rule, clear, ensure_id, set_css, svgicon, unique_id
 )
-from modals import error_dialog
+from gettext import gettext as _
+from modals import error_dialog, question_dialog
 from read_book.bookmarks import create_bookmarks_panel
 from read_book.globals import runtime, ui_operations
 from read_book.goto import create_goto_panel, create_location_overlay
 from read_book.highlights import create_highlights_panel
 from read_book.open_book import create_open_book
 from read_book.prefs.font_size import create_font_size_panel
+from read_book.prefs.head_foot import time_formatter
 from read_book.prefs.main import create_prefs_panel
 from read_book.toc import create_toc_panel
 from read_book.word_actions import create_word_actions_panel
-from session import get_device_uuid, defaults as session_defaults
+from session import defaults as session_defaults, get_device_uuid
 from utils import (
     default_context_menu_should_be_allowed, full_screen_element,
     full_screen_supported, is_ios, safe_set_inner_html
 )
+from uuid import short_uuid
 from widgets import create_button, create_spinner
 
 
@@ -79,6 +81,7 @@ class DeleteBook:  # {{{
         set_css(container, background_color=get_color('window-background'))
         container.appendChild(E.div(
             style='display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%',
+            tabindex='0',
             E.div(style='margin:1ex 1em; max-width: 80%',
                 E.h2(self.question),
                 E.div(style='display:flex; justify-content:flex-end; margin-top:1rem',
@@ -86,8 +89,19 @@ class DeleteBook:  # {{{
                     E.span('\xa0'),
                     create_button(_('Cancel'), action=self.cancel),
                 )
-            )
+            ),
+            onkeyup=def(ev):
+                if ev.key is 'Escape':
+                    ev.stopPropagation(), ev.preventDefault()
+                    self.cancel()
+                elif ev.key is 'Enter' or ev.key is 'Return':
+                    ev.stopPropagation(), ev.preventDefault()
+                    self.delete_book()
         ))
+        window.setTimeout(self.focus_me, 0)
+
+    def focus_me(self):
+        document.getElementById(self.container_id).lastChild.focus()
 
     def show_working(self):
         container = document.getElementById(self.container_id)
@@ -210,8 +224,9 @@ add_extra_css(def():
     sel += '> li'
     style += build_rule(sel, border_right='1px solid currentColor', padding='0.5em 1ex', display='flex', flex_wrap='wrap', align_items='center', cursor='pointer')
     style += build_rule(sel + ':last-child', border_right_style='none')
-    style += build_rule(sel + ':hover > *:first-child', color=get_color('window-hover-foreground'))
-    style += build_rule(sel + ':active > *:first-child', transform='scale(1.8)')
+    style += build_rule(sel + ':hover > *:first-child, .main-overlay-button:hover > *:first-child',
+                        color=get_color('window-hover-foreground'))
+    style += build_rule(sel + ':active > *:first-child, .main-overlay-button:active > *:first-child', transform='scale(1.8)')
     style += f'@media screen and (max-width: 350px) {{ #{timer_id()} {{ display: none; }} }}'
     return style
 )
@@ -219,15 +234,12 @@ add_extra_css(def():
 
 def simple_overlay_title(title, overlay, container):
     container.style.backgroundColor = get_color('window-background')
-    container.appendChild(E.div(
-        style='padding: 1ex 1em; border-bottom: solid 1px currentColor; display:flex; justify-content: flex-start',
-            E.div(svgicon('close'), style='cursor:pointer', onclick=def (event):
-                    event.preventDefault()
-                    event.stopPropagation()
-                    overlay.hide_current_panel(event)
-            , class_='simple-link'),
-            E.h2(title, style='margin-left: 1ex'),
-        ))
+    def action():
+        event = this
+        event.stopPropagation()
+        overlay.hide_current_panel(event)
+
+    create_top_bar(container, title=title, icon='close', action=action)
 
 
 class MainOverlay:  # {{{
@@ -260,8 +272,8 @@ class MainOverlay:  # {{{
         sync_action = ac(_('Sync'), _('Get last read position and annotations from the server'), self.overlay.sync_book, 'cloud-download')
         delete_action = ac(_('Delete'), _('Delete this book from local storage'), self.overlay.delete_book, 'trash')
         reload_action = ac(_('Reload'), _('Reload this book from the {}').format( _('computer') if runtime.is_standalone_viewer else _('server')), self.overlay.reload_book, 'refresh')
-        back_action = ac(_('Back'), None, self.back, 'arrow-left')
-        forward_action = ac(_('Forward'), None, self.forward, 'arrow-right')
+        back_action = ac(_('Back'), _('Go back'), self.back, 'arrow-left')
+        forward_action = ac(_('Forward'), _('Go forward'), self.forward, 'arrow-right')
         nav_actions = E.ul(back_action, forward_action)
         if runtime.is_standalone_viewer:
             reload_actions = E.ul(
@@ -271,14 +283,13 @@ class MainOverlay:  # {{{
         else:
             reload_actions = E.ul(sync_action, delete_action, reload_action)
 
-        bookmarks_action = ac(_('Bookmarks'), None, self.overlay.show_bookmarks, 'bookmark')
+        bookmarks_action = ac(_('Bookmarks'), _('Browse all bookmarks'), self.overlay.show_bookmarks, 'bookmark')
         highlights_action = ac(
             _('Highlights'), _('Browse all highlights'), def():
                 self.overlay.show_highlights()
             , 'image')
 
-        toc_actions = E.ul(ac(_('Table of Contents'), None, self.overlay.show_toc, 'toc'))
-
+        toc_actions = E.ul(ac(_('Table of Contents'), _('Browse the Table of Contents'), self.overlay.show_toc, 'toc'))
         toc_actions.appendChild(ac(_('Reference mode'), _('Toggle the Reference mode'), self.overlay.toggle_reference_mode, 'reference-mode'))
 
         actions_div = E.div( # actions
@@ -297,7 +308,7 @@ class MainOverlay:  # {{{
 
             E.ul(
                 ac(_('Font size'), _('Change text size'), self.overlay.show_font_size_chooser, 'Aa', True),
-                ac(_('Preferences'), _('Configure the book viewer'), self.overlay.show_prefs, 'cogs'),
+                ac(_('Preferences'), _('Configure the E-book viewer'), self.overlay.show_prefs, 'cogs'),
             ),
 
             class_=MAIN_OVERLAY_ACTIONS_CLASS
@@ -313,7 +324,7 @@ class MainOverlay:  # {{{
         if runtime.is_standalone_viewer:
             text = _('Exit full screen') if runtime.viewer_in_full_screen else _('Enter full screen')
             full_screen_actions.push(
-                ac(text, '', def(): self.overlay.hide(), ui_operations.toggle_full_screen();, 'full-screen'))
+                ac(text, _('Toggle full screen mode'), def(): self.overlay.hide(), ui_operations.toggle_full_screen();, 'full-screen'))
             full_screen_actions.push(
                 ac(_('Print'), _('Print book to PDF'), def(): self.overlay.hide(), ui_operations.print_book();, 'print'))
         else:
@@ -330,6 +341,13 @@ class MainOverlay:  # {{{
                     self.overlay.hide()
                     window.setTimeout(self.overlay.view.toggle_autoscroll, 0)
                 , 'auto-scroll'))
+
+        actions_div.appendChild(E.ul(
+            ac(_('Read aloud'), _('Read the book aloud'), def():
+               self.overlay.hide()
+               self.overlay.view.start_read_aloud()
+            , 'bullhorn')
+        ))
 
         if full_screen_actions.length:
             actions_div.appendChild(E.ul(*full_screen_actions))
@@ -359,24 +377,49 @@ class MainOverlay:  # {{{
             actions_div.appendChild(E.ul(
                 ac(_('Inspector'), _('Show the content inspector'),
                    def(): self.overlay.hide(), ui_operations.toggle_inspector();, 'bug'),
-                ac(_('Reset interface'), _('Reset viewer panels, toolbars and scrollbars to defaults'),
+                ac(_('Reset interface'), _('Reset E-book viewer panels, toolbars and scrollbars to defaults'),
                     def():
-                        self.overlay.hide()
-                        ui_operations.reset_interface()
-                        sd = get_session_data()
-                        sd.set('skipped_dialogs', session_defaults.skipped_dialogs)
+                        question_dialog(
+                            _('Are you sure?'), _(
+                                'Are you sure you want to reset the viewer interface'
+                                ' to its default appearance?'
+                        ),
+                            def (yes):
+                                if yes:
+                                    self.overlay.hide()
+                                    ui_operations.reset_interface()
+                                    sd = get_session_data()
+                                    sd.set('skipped_dialogs', session_defaults.skipped_dialogs)
+                        )
+
+
                     , 'window-restore'),
-                ac(_('Quit'), _('Close the viewer'),
+                ac(_('Quit'), _('Close the E-book viewer'),
                    def(): self.overlay.hide(), ui_operations.quit();, 'remove'),
             ))
         else:
-            pass
+            copy_actions = E.ul()
+            if self.elements.link:
+                copy_actions.appendChild(ac(_('Copy link'), _('Copy the current link'), def():
+                    self.overlay.hide(), ui_operations.copy_selection(self.elements.link)
+                , 'link'))
+            if self.elements.img:
+                copy_actions.appendChild(ac(_('View image'), _('View the current image'), def():
+                    self.overlay.hide(), ui_operations.view_image(self.elements.img)
+                , 'image'))
+                if window.navigator.clipboard:
+                    copy_actions.appendChild(ac(_('Copy image'), _('Copy the current image'), def():
+                        self.overlay.hide(), ui_operations.copy_image(self.elements.img)
+                    , 'copy'))
+            if copy_actions.childNodes.length:
+                actions_div.appendChild(copy_actions)
+
         container.appendChild(set_css(E.div(class_=MAIN_OVERLAY_TS_CLASS,  # top section
             onclick=def (evt):evt.stopPropagation();,
 
             set_css(E.div(  # top row
                 E.div(self.overlay.view.book?.metadata?.title or _('Unknown'), style='max-width: 90%; text-overflow: ellipsis; font-weight: bold; white-space: nowrap; overflow: hidden'),
-                E.div(self.date_formatter.format(Date()), id=timer_id(), style='max-width: 9%; white-space: nowrap; overflow: hidden'),
+                E.div(time_formatter.format(Date()), id=timer_id(), style='max-width: 9%; white-space: nowrap; overflow: hidden'),
                 ),
                 display='flex', justify_content='space-between', align_items='baseline', font_size='smaller', padding='0.5ex 1ex', border_bottom='solid 1px currentColor'
             ),
@@ -384,14 +427,23 @@ class MainOverlay:  # {{{
         ), user_select='none', background_color=get_color('window-background')))
 
         container.appendChild(
-            set_css(E.div( # bottom bar
-                svgicon('close', icon_size, icon_size), '\xa0', _('Close'),
+            E.div( # bottom bar
+                  style='position: fixed; width: 100%; bottom: 0; display: flex; justify-content: space-between; align-items: center;'
+                        'user-select: none; background-color: {}'.format(get_color('window-background')),
+                E.div(
+                    style='display: flex; align-items: center; cursor: pointer; padding: 0.5ex 1rem', class_='main-overlay-button',
+                    title=_('Close the viewer controls'),
+                    svgicon('close', icon_size, icon_size), '\xa0', _('Close')
+                ),
+                E.div(style='padding: 0.5ex 1rem', '\xa0'), E.div(style='padding: 0.5ex 1rem', '\xa0'),
             ),
-            cursor='pointer', position='fixed', width='100vw', bottom='0', display='flex', justify_content='center', align_items='center', padding='0.5ex 1em',
-            user_select='none', background_color=get_color('window-background'),
-            )
         )
-
+        renderer = self.overlay.view.create_template_renderer()
+        if renderer:
+            c = container.lastChild.lastChild
+            b = c.previousSibling
+            renderer(b, 'controls_footer', 'middle', '')
+            renderer(c, 'controls_footer', 'right', '')
 
         self.on_hide()
         self.timer = setInterval(self.update_time, 1000)
@@ -408,9 +460,11 @@ class MainOverlay:  # {{{
 
     def back(self):
         window.history.back()
+        self.overlay.hide()
 
     def forward(self):
         window.history.forward()
+        self.overlay.hide()
 
 # }}}
 
@@ -437,6 +491,8 @@ class TOCOverlay(SimpleOverlay): # {{{
         self.title = title or _('Table of Contents')
 
     def show(self, container):
+        container.appendChild(E.div())
+        container = container.firstChild
         simple_overlay_title(self.title, self.overlay, container)
         self.create_func(self.overlay.view.book, container, self.handle_activate)
 
@@ -688,7 +744,7 @@ class Overlay:
             self.hide()
             ui_operations.toggle_highlights()
             return
-        self.panels.push(TOCOverlay(self, create_highlights_panel.bind(None, self.view.annotations_manager), _('Highlights')))
+        self.panels.push(TOCOverlay(self, create_highlights_panel.bind(None, self.view.annotations_manager, self.hide_current_panel), _('Highlights')))
         self.show_current_panel()
 
     def show_goto(self):
@@ -726,7 +782,7 @@ class Overlay:
 
                 container.lastChild.appendChild(E.div(
                     style='text-align: right',
-                    E.a(_('Edit metadata of book in library'), class_='blue-link', onclick=def():
+                    E.a(_('Edit the metadata for this book in the library'), class_='blue-link', onclick=def():
                         container = document.getElementById(container_id)
                         clear(container)
                         container.appendChild(E.iframe(
@@ -747,7 +803,16 @@ class Overlay:
             if pathtoebook:
                 container.lastChild.appendChild(E.div(
                     style='margin-top: 1ex; padding-top: 1ex; border-top: solid 1px',
-                    _('Path: {}').format(pathtoebook)))
+                    _('Path:'), ' ',
+                    E.a(
+                        href='javascript: void(0)',
+                        class_='blue-link', title=_('Click to open the folder the book is in'),
+                        onclick=def():
+                            ui_operations.show_book_folder()
+                        ,
+                        pathtoebook)
+                    )
+                )
 
         book = self.view.book
         key = book.key or v'[null, 0]'

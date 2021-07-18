@@ -6,28 +6,31 @@ __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import os, shutil, copy
+import copy
+import os
+import shutil
 from functools import partial
 from io import BytesIO
+from qt.core import (
+    QAction, QApplication, QDialog, QIcon, QMenu, QMimeData, QModelIndex, QTimer, QUrl
+)
 
-from PyQt5.Qt import QMenu, QModelIndex, QTimer, QIcon, QApplication, QMimeData
-
-from calibre.gui2 import error_dialog, Dispatcher, question_dialog, gprefs
-from calibre.gui2.dialogs.metadata_bulk import MetadataBulkDialog
-from calibre.gui2.dialogs.confirm_delete import confirm
-from calibre.gui2.dialogs.device_category_editor import DeviceCategoryEditor
-from calibre.gui2.actions import InterfaceAction
+from calibre.db.errors import NoSuchFormat
 from calibre.ebooks.metadata import authors_to_string
 from calibre.ebooks.metadata.book.base import Metadata
 from calibre.ebooks.metadata.opf2 import OPF, metadata_to_opf
+from calibre.ebooks.metadata.sources.prefs import msprefs
+from calibre.gui2 import Dispatcher, error_dialog, gprefs, question_dialog
+from calibre.gui2.actions import InterfaceAction
+from calibre.gui2.actions.show_quickview import get_quickview_action_plugin
+from calibre.gui2.dialogs.confirm_delete import confirm
+from calibre.gui2.dialogs.device_category_editor import DeviceCategoryEditor
+from calibre.gui2.dialogs.metadata_bulk import MetadataBulkDialog
+from calibre.library.comments import merge_comments
 from calibre.utils.config import tweaks
 from calibre.utils.date import is_date_undefined
 from calibre.utils.icu import sort_key
-from calibre.db.errors import NoSuchFormat
-from calibre.library.comments import merge_comments
-from calibre.ebooks.metadata.sources.prefs import msprefs
-from calibre.gui2.actions.show_quickview import get_quickview_action_plugin
-from polyglot.builtins import iteritems, unicode_type, map
+from polyglot.builtins import iteritems, map, unicode_type
 
 
 class EditMetadataAction(InterfaceAction):
@@ -99,6 +102,57 @@ class EditMetadataAction(InterfaceAction):
         self.action_merge.setMenu(mb)
 
         self.qaction.triggered.connect(self.edit_metadata)
+        ac = QAction(_('Copy URL to show book in calibre'), self.gui)
+        ac.setToolTip(_('Copy URLs to show the currently selected books in calibre, to the system clipboard'))
+        ac.triggered.connect(self.copy_show_link)
+        self.gui.addAction(ac)
+        self.gui.keyboard.register_shortcut(
+            self.unique_name + ' - ' + 'copy_show_book',
+            ac.text(), description=ac.toolTip(),
+            action=ac, group=self.action_spec[0])
+        ac = QAction(_('Copy URL to open book in calibre'), self.gui)
+        ac.triggered.connect(self.copy_view_link)
+        ac.setToolTip(_('Copy URLs to open the currently selected books in calibre, to the system clipboard'))
+        self.gui.addAction(ac)
+        self.gui.keyboard.register_shortcut(
+            self.unique_name + ' - ' + 'copy_view_book',
+            ac.text(), description=ac.toolTip(),
+            action=ac, group=self.action_spec[0])
+
+    def _copy_links(self, lines):
+        urls = QUrl.fromStringList(lines)
+        cb = QApplication.instance().clipboard()
+        md = QMimeData()
+        md.setText('\n'.join(lines))
+        md.setUrls(urls)
+        cb.setMimeData(md)
+
+    def copy_show_link(self):
+        db = self.gui.current_db
+        ids = [db.id(row.row()) for row in self.gui.library_view.selectionModel().selectedRows()]
+        db = db.new_api
+        library_id = getattr(db, 'server_library_id', None)
+        if not library_id or not ids:
+            return
+        lines = [f'calibre://show-book/{library_id}/{book_id}' for book_id in ids]
+        self._copy_links(lines)
+
+    def copy_view_link(self):
+        from calibre.gui2.actions.view import preferred_format
+        db = self.gui.current_db
+        ids = [db.id(row.row()) for row in self.gui.library_view.selectionModel().selectedRows()]
+        db = db.new_api
+        library_id = getattr(db, 'server_library_id', None)
+        if not library_id or not ids:
+            return
+        lines = []
+        for book_id in ids:
+            formats = db.new_api.formats(book_id, verify_formats=True)
+            if formats:
+                fmt = preferred_format(formats)
+                lines.append(f'calibre://view-book/{library_id}/{book_id}/{fmt}')
+        if lines:
+            self._copy_links(lines)
 
     def location_selected(self, loc):
         enabled = loc == 'library'
@@ -174,8 +228,8 @@ class EditMetadataAction(InterfaceAction):
                             _('No books selected'), show=True)
             db = self.gui.library_view.model().db
             ids = [db.id(row.row()) for row in rows]
-        from calibre.gui2.metadata.bulk_download import start_download
         from calibre.ebooks.metadata.sources.update import update_sources
+        from calibre.gui2.metadata.bulk_download import start_download
         update_sources()
         start_download(self.gui, ids,
                 Dispatcher(self.metadata_downloaded),
@@ -315,7 +369,7 @@ class EditMetadataAction(InterfaceAction):
                 action_button=(_('&View book'), I('view.png'), self.gui.iactions['View'].view_historical),
                 db=db
             )
-            if d.exec_() == d.Accepted:
+            if d.exec_() == QDialog.DialogCode.Accepted:
                 if d.mark_rejected:
                     failed_ids |= d.rejected_ids
                     restrict_to_failed = True
@@ -723,7 +777,7 @@ class EditMetadataAction(InterfaceAction):
         result = model.get_collections_with_ids()
         d = DeviceCategoryEditor(self.gui, tag_to_match=None, data=result, key=sort_key)
         d.exec_()
-        if d.result() == d.Accepted:
+        if d.result() == QDialog.DialogCode.Accepted:
             to_rename = d.to_rename  # dict of new text to old ids
             to_delete = d.to_delete  # list of ids
             for old_id, new_name in iteritems(to_rename):
@@ -849,7 +903,7 @@ class EditMetadataAction(InterfaceAction):
 
             error_dialog(self.gui, _('Some failures'),
                 _('Failed to apply updated metadata for some books'
-                    ' in your library. Click "Show Details" to see '
+                    ' in your library. Click "Show details" to see '
                     'details.'), det_msg='\n\n'.join(msg), show=True)
         changed_books = len(self.applied_ids or ())
         self.refresh_gui(self.applied_ids)
@@ -884,6 +938,11 @@ class EditMetadataAction(InterfaceAction):
             identifiers = db.field_for(field, book_id)
             if identifiers.pop(value, False) is not False:
                 affected_books = db.set_field(field, {book_id:identifiers})
+        elif field == 'authors':
+            authors = db.field_for(field, book_id)
+            new_authors = [x for x in authors if x != value] or [_('Unknown')]
+            if new_authors != authors:
+                affected_books = db.set_field(field, {book_id:new_authors})
         elif fm['is_multiple']:
             item_id = db.get_item_id(field, value)
             if item_id is not None:
@@ -894,8 +953,8 @@ class EditMetadataAction(InterfaceAction):
             self.refresh_books_after_metadata_edit(affected_books)
 
     def set_cover_from_format(self, book_id, fmt):
-        from calibre.utils.config import prefs
         from calibre.ebooks.metadata.meta import get_metadata
+        from calibre.utils.config import prefs
         fmt = fmt.lower()
         cdata = None
         db = self.gui.current_db.new_api
@@ -907,13 +966,13 @@ class EditMetadataAction(InterfaceAction):
             from calibre.gui2.metadata.pdf_covers import PDFCovers
             d = PDFCovers(pdfpath, parent=self.gui)
             ret = d.exec_()
-            if ret == d.Accepted:
+            if ret == QDialog.DialogCode.Accepted:
                 cpath = d.cover_path
                 if cpath:
                     with open(cpath, 'rb') as f:
                         cdata = f.read()
             d.cleanup()
-            if ret != d.Accepted:
+            if ret != QDialog.DialogCode.Accepted:
                 return
         else:
             stream = BytesIO()

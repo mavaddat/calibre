@@ -51,6 +51,16 @@ def asfloat(value):
     return float(value)
 
 
+def convert_margin(style, which):
+    # percentage values come out too large when the user uses a non kindle
+    # output profile like the tablet profile
+    ans = asfloat(style[which])
+    raw = style._get(which)
+    if isinstance(raw, str) and '%' in raw:
+        ans = min(style._unit_convert(raw, base=600), ans)
+    return ans
+
+
 def isspace(text):
     if not text:
         return True
@@ -363,7 +373,10 @@ class MobiMLizer(object):
             bstate.para = None
             istate.halign = style['text-align']
             rawti = style._get('text-indent')
-            istate.indent = style['text-indent']
+            try:
+                istate.indent = style['text-indent']
+            except Exception:
+                istate.indent = 0
             if hasattr(rawti, 'strip') and '%' in rawti:
                 # We have a percentage text indent, these can come out looking
                 # too large if the user chooses a wide output profile like
@@ -372,12 +385,12 @@ class MobiMLizer(object):
             if style['margin-left'] == 'auto' \
                and style['margin-right'] == 'auto':
                 istate.halign = 'center'
-            margin = asfloat(style['margin-left'])
+            margin = convert_margin(style, 'margin-left')
             padding = asfloat(style['padding-left'])
             if tag != 'body':
                 left = margin + padding
             istate.left += left
-            vmargin = asfloat(style['margin-top'])
+            vmargin = convert_margin(style, 'margin-top')
             bstate.vmargin = max((bstate.vmargin, vmargin))
             vpadding = asfloat(style['padding-top'])
             if vpadding > 0:
@@ -385,13 +398,13 @@ class MobiMLizer(object):
                 bstate.vmargin = 0
                 bstate.vpadding += vpadding
         elif not istate.href:
-            margin = asfloat(style['margin-left'])
+            margin = convert_margin(style, 'margin-left')
             padding = asfloat(style['padding-left'])
             lspace = margin + padding
             if lspace > 0:
                 spaces = int(round((lspace * 3) / style['font-size']))
                 elem.text = ('\xa0' * spaces) + (elem.text or '')
-            margin = asfloat(style['margin-right'])
+            margin = convert_margin(style, 'margin-right')
             padding = asfloat(style['padding-right'])
             rspace = margin + padding
             if rspace > 0:
@@ -610,7 +623,7 @@ class MobiMLizer(object):
                     para.getparent().remove(para)
             bstate.para = None
             bstate.istate = None
-            vmargin = asfloat(style['margin-bottom'])
+            vmargin = convert_margin(style, 'margin-bottom')
             bstate.vmargin = max((bstate.vmargin, vmargin))
             vpadding = asfloat(style['padding-bottom'])
             if vpadding > 0:

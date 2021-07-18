@@ -2,10 +2,10 @@
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2015, Kovid Goyal <kovid at kovidgoyal.net>
 from polyglot.builtins import map, unicode_type, environ_item, hasenv, getenv
-import sys, locale, codecs, os, collections
+import sys, locale, codecs, os, collections, collections.abc
 
 __appname__   = 'calibre'
-numeric_version = (5, 5, 0)
+numeric_version = (5, 23, 0)
 __version__   = '.'.join(map(unicode_type, numeric_version))
 git_version   = None
 __author__    = "Kovid Goyal <kovid@kovidgoyal.net>"
@@ -166,6 +166,8 @@ def cache_dir():
 
 # plugins {{{
 plugins_loc = sys.extensions_location
+system_plugins_loc = getattr(sys, 'system_plugins_location', None)
+
 from importlib.machinery import ModuleSpec, EXTENSION_SUFFIXES, ExtensionFileLoader
 from importlib.util import find_spec
 from importlib import import_module
@@ -236,6 +238,7 @@ class ExtensionsImporter:
             'icu',
             'speedup',
             'html_as_json',
+            'fast_css_transform',
             'unicode_names',
             'html_syntax_highlighter',
             'hyphen',
@@ -247,6 +250,7 @@ class ExtensionsImporter:
             'matcher',
             'tokenizer',
             'certgen',
+            'sqlite_extension',
         )
         if iswindows:
             extra = ('winutil', 'wpd', 'winfonts', 'winsapi')
@@ -288,7 +292,7 @@ if iswindows:
     from calibre_extensions import winutil
 
 
-class Plugins(collections.Mapping):
+class Plugins(collections.abc.Mapping):
 
     def __iter__(self):
         from importlib.resources import contents
@@ -316,6 +320,15 @@ class Plugins(collections.Mapping):
             raise KeyError('No plugin named %r'%name)
         except Exception as err:
             return None, str(err)
+
+    def load_apsw_extension(self, conn, name):
+        conn.enableloadextension(True)
+        try:
+            ext = 'pyd' if iswindows else 'so'
+            path = os.path.join(plugins_loc, f'{name}.{ext}')
+            conn.loadextension(path, f'calibre_{name}_init')
+        finally:
+            conn.enableloadextension(False)
 
 
 plugins = None
@@ -390,6 +403,13 @@ def get_version():
         v += ' [64bit]'
 
     return v
+
+
+def get_appname_for_display():
+    ans = __appname__
+    if isportable:
+        ans = _('{} Portable').format(ans)
+    return ans
 
 
 def get_portable_base():

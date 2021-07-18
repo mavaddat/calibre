@@ -7,7 +7,7 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 
-from PyQt5.Qt import QLineEdit
+from qt.core import QLineEdit
 
 from calibre.gui2.dialogs.template_dialog import TemplateDialog
 
@@ -21,6 +21,7 @@ class TemplateLineEditor(QLineEdit):
     def __init__(self, parent):
         QLineEdit.__init__(self, parent)
         self.mi   = None
+        self.setClearButtonEnabled(True)
 
     def set_mi(self, mi):
         self.mi = mi

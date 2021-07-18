@@ -6,14 +6,18 @@ __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import os, sys, importlib, weakref
+import importlib
+import os
+import sys
+import weakref
+from qt.core import (
+    QApplication, QCoreApplication, QDialog, QDialogButtonBox, QScrollArea, QSize
+)
 
-from PyQt5.Qt import QDialog, QCoreApplication, QSize, QScrollArea, QApplication
-
-from calibre.customize.ui import config
-from calibre.gui2.dialogs.catalog_ui import Ui_Dialog
+from calibre.customize import PluginInstallationType
+from calibre.customize.ui import catalog_plugins, config
 from calibre.gui2 import dynamic, info_dialog
-from calibre.customize.ui import catalog_plugins
+from calibre.gui2.dialogs.catalog_ui import Ui_Dialog
 from polyglot.builtins import unicode_type
 
 
@@ -23,8 +27,9 @@ class Catalog(QDialog, Ui_Dialog):
 
     def __init__(self, parent, dbspec, ids, db):
         import re
-        from calibre import prints as info
         from PyQt5.uic import compileUi
+
+        from calibre import prints as info
 
         QDialog.__init__(self, parent)
         self.setupUi(self)
@@ -44,7 +49,7 @@ class Catalog(QDialog, Ui_Dialog):
                 continue
 
             name = plugin.name.lower().replace(' ', '_')
-            if getattr(plugin, 'plugin_path', None) is None:
+            if getattr(plugin, 'installation_type', None) is PluginInstallationType.BUILTIN:
                 try:
                     catalog_widget = importlib.import_module('calibre.gui2.catalog.'+name)
                     pw = catalog_widget.PluginWidget()
@@ -68,6 +73,7 @@ class Catalog(QDialog, Ui_Dialog):
                     # Compile the .ui form provided in plugin.zip
                     if not os.path.exists(compiled_form):
                         from polyglot.io import PolyglotStringIO
+
                         # info('\tCompiling form', form)
                         buf = PolyglotStringIO()
                         compileUi(form, buf)
@@ -124,8 +130,8 @@ class Catalog(QDialog, Ui_Dialog):
         self.add_to_library.setChecked(dynamic.get('catalog_add_to_library', True))
 
         self.format.currentIndexChanged.connect(self.show_plugin_tab)
-        self.buttonBox.button(self.buttonBox.Apply).clicked.connect(self.apply)
-        self.buttonBox.button(self.buttonBox.Help).clicked.connect(self.help)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply)
+        self.buttonBox.button(QDialogButtonBox.StandardButton.Help).clicked.connect(self.help)
         self.show_plugin_tab(None)
 
         geom = dynamic.get('catalog_window_geom', None)
@@ -165,9 +171,9 @@ class Catalog(QDialog, Ui_Dialog):
                     self.tabs.addTab(s, pw.TITLE)
                 break
         if hasattr(self.options_widget, 'show_help'):
-            self.buttonBox.button(self.buttonBox.Help).setVisible(True)
+            self.buttonBox.button(QDialogButtonBox.StandardButton.Help).setVisible(True)
         else:
-            self.buttonBox.button(self.buttonBox.Help).setVisible(False)
+            self.buttonBox.button(QDialogButtonBox.StandardButton.Help).setVisible(False)
 
     def format_changed(self, idx):
         cf = unicode_type(self.format.currentText())
@@ -218,7 +224,7 @@ class Catalog(QDialog, Ui_Dialog):
         To add help functionality for a specific format:
         In gui2.catalog.catalog_<format>.py, add the following:
             from calibre.gui2 import open_url
-            from PyQt5.Qt import QUrl
+            from qt.core import QUrl
 
         In the PluginWidget() class, add this method:
             def show_help(self):

@@ -7,7 +7,7 @@ __docformat__ = 'restructuredtext en'
 
 from functools import partial
 
-from PyQt5.Qt import (Qt, QTreeView, QSize, QMenu)
+from qt.core import (Qt, QTreeView, QSize, QMenu)
 
 from calibre.customize.ui import store_plugins
 from calibre.gui2.metadata.single_download import RichTextDelegate
@@ -35,7 +35,7 @@ class ResultsView(QTreeView):
         for i in range(self._model.columnCount()):
             self.resizeColumnToContents(i)
 
-        self.model().sort(1, Qt.AscendingOrder)
+        self.model().sort(1, Qt.SortOrder.AscendingOrder)
         self.header().setSortIndicator(self.model().sort_col, self.model().sort_order)
 
     def contextMenuEvent(self, event):

@@ -4,7 +4,7 @@ __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import re
-from PyQt5.Qt import QDialog, QLineEdit, Qt
+from qt.core import QDialog, QLineEdit, Qt
 
 from calibre.gui2.dialogs.password_ui import Ui_Dialog
 from calibre.gui2 import dynamic
@@ -32,10 +32,10 @@ class PasswordDialog(QDialog, Ui_Dialog):
         self.show_password.stateChanged[(int)].connect(self.toggle_password)
 
     def toggle_password(self, state):
-        if state == Qt.Unchecked:
-            self.gui_password.setEchoMode(QLineEdit.Password)
+        if state == Qt.CheckState.Unchecked:
+            self.gui_password.setEchoMode(QLineEdit.EchoMode.Password)
         else:
-            self.gui_password.setEchoMode(QLineEdit.Normal)
+            self.gui_password.setEchoMode(QLineEdit.EchoMode.Normal)
 
     def username(self):
         return unicode_type(self.gui_username.text())

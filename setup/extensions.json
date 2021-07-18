@@ -72,6 +72,16 @@
         "inc_dirs": "!sqlite_inc_dirs"
     },
     {
+        "name": "sqlite_extension",
+        "headers": "calibre/utils/cpp_binding.h",
+        "sources": "calibre/db/sqlite_extension.cpp",
+		"needs_c++14": true,
+        "libraries": "icudata icui18n icuuc icuio stemmer",
+        "windows_libraries": "icudt icuin icuuc icuio libstemmer",
+        "lib_dirs": "!icu_lib_dirs",
+        "inc_dirs": "!icu_inc_dirs !sqlite_inc_dirs"
+    },
+    {
         "name": "lzx",
         "sources": "calibre/utils/lzx/lzxmodule.c calibre/utils/lzx/compressor.c calibre/utils/lzx/lzxd.c calibre/utils/lzx/lzc.c calibre/utils/lzx/lzxc.c",
         "inc_dirs": "calibre/utils/lzx",
@@ -115,6 +125,13 @@
 		"needs_c++11": true
     },
     {
+        "name": "fast_css_transform",
+        "headers": "calibre/utils/cpp_binding.h calibre/utils/stb_sprintf.h",
+        "sources": "calibre/srv/fast_css_transform.cpp",
+		"inc_dirs": "perfect-hashing",
+		"needs_c++14": true
+    },
+    {
         "name": "pictureflow",
         "sources": "calibre/gui2/pictureflow/pictureflow.cpp",
         "headers": "calibre/gui2/pictureflow/pictureflow.h",
@@ -139,7 +156,7 @@
     {
         "name": "winutil",
         "only": "windows",
-        "headers": "calibre/utils/windows/common.h",
+        "headers": "calibre/utils/cpp_binding.h calibre/utils/windows/common.h",
         "sources": "calibre/utils/windows/winutil.cpp",
         "libraries": "shell32 wininet advapi32",
         "cflags": "/X"
@@ -147,7 +164,7 @@
     {
         "name": "winsapi",
         "only": "windows",
-        "headers": "calibre/utils/windows/common.h",
+        "headers": "calibre/utils/cpp_binding.h calibre/utils/windows/common.h",
         "sources": "calibre/utils/windows/winsapi.cpp",
         "libraries": "SAPI Ole32",
         "cflags": "/X"
@@ -155,8 +172,8 @@
     {
         "name": "wpd",
         "only": "windows",
-        "sources": "calibre/devices/mtp/windows/utils.cpp calibre/devices/mtp/windows/device_enumeration.cpp calibre/devices/mtp/windows/content_enumeration.cpp calibre/devices/mtp/windows/device.cpp calibre/devices/mtp/windows/wpd.cpp",
-        "headers": "calibre/devices/mtp/windows/global.h",
+        "sources": "calibre/devices/mtp/windows/device_enumeration.cpp calibre/devices/mtp/windows/content_enumeration.cpp calibre/devices/mtp/windows/device.cpp calibre/devices/mtp/windows/wpd.cpp",
+        "headers": "calibre/utils/cpp_binding.h calibre/devices/mtp/windows/global.h calibre/utils/windows/common.h",
         "libraries": "ole32 oleaut32 portabledeviceguids user32",
         "cflags": "/X"
     },
@@ -176,7 +193,7 @@
     {
         "name": "cocoa",
         "only": "macos",
-        "sources": "calibre/utils/cocoa.m calibre/utils/cocoa_wrapper.c",
+        "sources": "calibre/utils/cocoa.m calibre/gui2/tts/nsss.m",
         "ldflags": "-framework Cocoa"
     },
     {

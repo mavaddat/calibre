@@ -42,7 +42,7 @@ The viewer has two modes, "paged" and "flow". In paged mode the book content
 is presented as pages, similar to a paper book. In flow mode the text is
 presented continuously, like in a web browser. You can switch between them
 using the viewer Preferences under :guilabel:`Page layout` or by pressing the
-:kbd:`ctrl+m` key.
+:kbd:`Ctrl+M` key.
 
 
 Bookmarks
@@ -51,7 +51,7 @@ Bookmarks
 When you are in the middle of a book and close the E-book viewer, it will remember
 where you stopped reading and return there the next time you open the book. You
 can also set bookmarks in the book by using the :guilabel:`Bookmarks` button in
-the E-book viewer controls or pressing :kbd:`ctrl+b`.  When viewing EPUB format books,
+the E-book viewer controls or pressing :kbd:`Ctrl+B`. When viewing EPUB format books,
 these bookmarks are actually saved in the EPUB file itself. You can add
 bookmarks, then send the file to a friend.  When they open the file, they will
 be able to see your bookmarks. You can turn off this behavior in the
@@ -91,9 +91,9 @@ These buttons behave just like those in a web browser.
 Reference mode
 ^^^^^^^^^^^^^^^^^
 
-calibre also has a very handy :guilabel:`Reference mode`.  You can turn it on
+calibre also has a very handy :guilabel:`Reference mode`. You can turn it on
 by clicking the :guilabel:`Reference mode` button in the viewer controls.  Once
-you do this, every mouse over a paragraph, calibre will display a unique number
+you do this, every paragraph will have a unique number displayed at the start,
 made up of the section and paragraph numbers.
 
 You can use this number to unambiguously refer to parts of the books when
@@ -109,9 +109,10 @@ When you select text in the viewer, a little popup bar appears next to the
 selection. You can click the highlight button in that bar to create a
 highlight. You can add notes and change the color of the highlight. On a touch
 screen, long tap a word to select it and show the popup bar. Once in highlight
-mode you can tap the :guilabel:`Adjust selection` button to change what text is
-selected, using touch screen friendly selection handles.  Drag
-the handles to the top or bottom margins to scroll while selecting.
+mode you can change what text is selected, using touch screen friendly selection
+handles. Drag the handles to the top or bottom margins to scroll while selecting.
+You can also :kbd:`Shift+click` or :kbd:`right click` to extend the selection,
+particularly useful for multi-page selections.
 
 You can use the :guilabel:`Highlights` button in the viewer
 controls to show a separate panel with a list of all highlights in the book,
@@ -126,6 +127,52 @@ have the viewer sync its annotations with the browser viewer by going to
 :guilabel:`Preferences->Miscellaneous` in the viewer preferences and entering
 the username of the Content server viewer to sync with. Use the special value
 ``*`` to sync with anonymous users.
+
+
+Read aloud
+------------
+
+The viewer can read book text aloud. To use it you can simply click the
+:guilabel:`Read aloud` button in the viewer controls to start reading book text
+aloud. The word being currently read is highlighted. Speech is synthesized from
+the text using your operating system services for text-to-speech. You can
+change the voice being used by clicking the gear icon in the bar that is
+displayed while :guilabel:`Read aloud` is active.
+
+You can also read aloud highlighted passages by adding the :guilabel:`Read aloud` button to
+the selection bar in the viewer preferences under :guilabel:`Selection
+behavior`.
+
+
+.. note:: Support for text-to-speech in browsers is very incomplete and
+   bug-ridden so how well :guilabel:`Read aloud` will work in the in-browser
+   viewer is dependent on how well the underlying browser supports
+   text-to-speech. In particular, highlighting of current word does not work,
+   and changing speed or voice will cause reading to start again from the
+   beginning.
+
+.. note:: On Linux, :guilabel:`Read aloud` requires `Speech Dispatcher
+   <https://freebsoft.org/speechd>`_ to be installed and working.
+
+.. note:: On Windows, not all installed voices may be visible to the SAPI
+   sub-system that is used for text-to-speech. There are `instructions to
+   make all voices visible
+   <https://www.mobileread.com/forums/showpost.php?p=4084051&postcount=108>`_.
+
+
+Following links using only the keyboard
+-----------------------------------------------
+
+The E-book viewer has a :guilabel:`Hints mode` that allows you to click links
+in the text without using the mouse. Press the :kbd:`Alt+F` key and all links
+in the current screen will be highlighted with a number or letter over them.
+Press the letter on your keyboard to click the link. Pressing the :kbd:`Esc`
+key will abort the :guilabel:`Hints mode` without selecting any link.
+
+If more than thirty five links are on-screen then some of them will have
+multiple letters, in which case type the first and second, or the first and
+press :kbd:`Enter` to activate. You can also use the :kbd:`Backspace` key to
+undo a mistake in typing.
 
 
 Customizing the look and feel of your reading experience
@@ -155,9 +202,9 @@ custom stylesheets used by calibre's users, see `the forums
 Dictionary lookup
 -------------------
 
-You can look up the meaning of words in the current book by opening the
-:guilabel:`Lookup/search word panel` via the viewer controls. Then simply double
-click on any word and its definition will be displayed in the Lookup panel.
+You can look up the meaning of words in the current book by double clicking
+or long tapping the word you want to lookup and then clicking the lookup button
+that looks like a library.
 
 
 Copying text and images
@@ -179,9 +226,9 @@ choose :guilabel:`View image`.
 Non re-flowable content
 --------------------------
 
-Some books have very wide content that content be broken up at page boundaries.
+Some books have very wide content that cannot be broken up at page boundaries.
 For example tables or :code:`<pre>` tags. In such cases, you should switch the
-viewer to *flow mode* by pressing :kbd:`Ctrl+m` to read this content.
+viewer to *flow mode* by pressing :kbd:`Ctrl+M` to read this content.
 Alternately, you can also add the following CSS to the :guilabel:`Styles` section of the
 viewer preferences to force the viewer to break up lines of text in
 :code:`<pre>` tags::

@@ -36,7 +36,7 @@ class TXTInput(InputFormatPlugin):
 
     name        = 'TXT Input'
     author      = 'John Schember'
-    description = 'Convert TXT files to HTML'
+    description = _('Convert TXT files to HTML')
     file_types  = {'txt', 'txtz', 'text', 'md', 'textile', 'markdown'}
     commit_name = 'txt_input'
     ui_data = {
@@ -114,9 +114,9 @@ class TXTInput(InputFormatPlugin):
         for img in root.xpath('//img[@src]'):
             src = img.get('src')
             prefix = src.split(':', 1)[0].lower()
-            if prefix not in ('file', 'http', 'https', 'ftp') and not os.path.isabs(src):
+            if src and prefix not in ('file', 'http', 'https', 'ftp') and not os.path.isabs(src):
                 src = os.path.join(base_dir, src)
-                if os.access(src, os.R_OK):
+                if os.path.isfile(src) and os.access(src, os.R_OK):
                     with open(src, 'rb') as f:
                         data = f.read()
                     f = self.shift_file(os.path.basename(src), data)
@@ -147,6 +147,7 @@ class TXTInput(InputFormatPlugin):
 
         # Extract content from zip archive.
         if file_ext == 'txtz':
+            options.input_encoding = 'utf-8'
             zf = ZipFile(stream)
             zf.extractall('.')
 
@@ -154,6 +155,23 @@ class TXTInput(InputFormatPlugin):
                 if os.path.splitext(x)[1].lower() in ('.txt', '.text'):
                     with open(x, 'rb') as tf:
                         txt += tf.read() + b'\n\n'
+            if os.path.exists('metadata.opf'):
+                from lxml import etree
+                with open('metadata.opf', 'rb') as mf:
+                    raw = mf.read()
+                try:
+                    root = etree.fromstring(raw)
+                except Exception:
+                    pass
+                else:
+                    txt_formatting = root.find('text-formatting')
+                    if txt_formatting is not None and txt_formatting.text:
+                        txt_formatting = txt_formatting.text.strip()
+                        if txt_formatting in ('plain', 'textile', 'markdown') and options.formatting_type == 'auto':
+                            log.info(f'Using metadata from TXTZ archive to set text formmating type to: {txt_formatting}')
+                            options.formatting_type = txt_formatting
+                            if txt_formatting != 'plain':
+                                options.paragraph_type = 'off'
         else:
             if getattr(stream, 'name', None):
                 base_dir = os.path.dirname(stream.name)

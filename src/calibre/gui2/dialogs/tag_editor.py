@@ -3,7 +3,7 @@
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 
-from PyQt5.Qt import Qt, QDialog, QAbstractItemView, QApplication
+from qt.core import Qt, QDialog, QAbstractItemView, QApplication
 
 from calibre.gui2.dialogs.confirm_delete import confirm
 from calibre.gui2.dialogs.tag_editor_ui import Ui_TagEditor
@@ -71,8 +71,8 @@ class TagEditor(QDialog, Ui_TagEditor):
             tags = []
 
         if self.is_names:
-            self.applied_tags.setDragDropMode(QAbstractItemView.InternalMove)
-            self.applied_tags.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.applied_tags.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
+            self.applied_tags.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
         if key:
             all_tags = [tag for tag in self.db.all_custom(label=key)]
@@ -153,6 +153,10 @@ class TagEditor(QDialog, Ui_TagEditor):
         items = self.available_tags.selectedItems() if item is None else [item]
         rows = [self.available_tags.row(i) for i in items]
         if not rows:
+            text = self.available_filter_input.text()
+            if text and text.strip():
+                self.add_tag_input.setText(text)
+                self.add_tag_input.setFocus(Qt.FocusReason.OtherFocusReason)
             return
         row = max(rows)
         tags = self._get_applied_tags_box_contents()
@@ -215,7 +219,7 @@ class TagEditor(QDialog, Ui_TagEditor):
             tag = tag.strip()
             if not tag:
                 continue
-            for item in self.available_tags.findItems(tag, Qt.MatchFixedString):
+            for item in self.available_tags.findItems(tag, Qt.MatchFlag.MatchFixedString):
                 self.available_tags.takeItem(self.available_tags.row(item))
             if tag not in tags_in_box:
                 tags_in_box.append(tag)
@@ -257,5 +261,5 @@ if __name__ == '__main__':
     db = db()
     app = Application([])
     d = TagEditor(None, db, current_tags='a b c'.split())
-    if d.exec_() == d.Accepted:
+    if d.exec_() == QDialog.DialogCode.Accepted:
         print(d.tags)

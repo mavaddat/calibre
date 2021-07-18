@@ -140,7 +140,7 @@ is as follows.
      found in the first step.
 
 .. note::
-    For maximum security, you should also enable HTTPS on the content server.
+    For maximum security, you should also enable HTTPS on the Content server.
     You can either do so directly in the server by providing the path to
     the HTTPS certificate to use in the advanced configuration options for
     the server, or you can setup a reverse proxy as described below, to use
@@ -193,10 +193,7 @@ Browser support
 
 The new calibre server makes lots of use of advanced HTML 5 and CSS 3 features.
 As such it requires an up-to-date browser to use. It has been tested on Android
-Chrome and iOS Safari as well as Chrome and Firefox on the desktop. It is known
-not to work with Internet Explorer and Microsoft Edge (hopefully Edge will
-start working when Microsoft gets around to implementing a few missing
-standards).
+Chrome and iOS Safari as well as Chrome and Firefox on the desktop.
 
 The server is careful to use functionality that has either been already
 standardised or is on the standards track. As such if it does not currently
@@ -205,7 +202,7 @@ up.
 
 If you are using a particularly old or limited browser or you don't like to run
 JavaScript, you can use the *mobile* view, by simply adding ``/mobile`` to the
-the server address.
+server address.
 
 .. note::
     On iOS, Apple allows only a single browser engine, so Firefox, Chrome and
@@ -233,7 +230,7 @@ computer/user account, you can also manage users using just the command-line.
 
 You can manage user accounts using the ``--manage-users`` option
 to the standalone ``calibre-server`` program. Suppose you want to store
-the user database in the directory ``/srv/calibre``, then you create it
+the user database in the folder ``/srv/calibre``, then you create it
 by running::
 
     calibre-server --userdb /srv/calibre/users.sqlite --manage-users
@@ -270,6 +267,10 @@ server. In this case, run the calibre server as::
 
 Now setup the virtual host in your main server, for example, for nginx::
 
+    http {
+        client_max_body_size 64M;  # needed to upload large books
+    }
+
     server {
         listen [::]:80;
         server_name myserver.example.com;
@@ -304,6 +305,10 @@ use a URL prefix. Start the calibre server as::
 The key parameter here is ``--url-prefix /calibre``. This causes the Content server to serve all URLs prefixed by ``/calibre``. To see this in action, visit ``http://localhost:8080/calibre`` in your browser. You should see the normal Content server website, but now it will run under ``/calibre``.
 
 With nginx, the required configuration is::
+
+    http {
+        client_max_body_size 64M;  # needed to upload large books
+    }
 
     proxy_set_header X-Forwarded-For $remote_addr;
     location /calibre/ {
@@ -357,14 +362,14 @@ based Linux system. Just create the file
 ``/etc/systemd/system/calibre-server.service`` with the contents shown below::
 
     [Unit]
-    Description=calibre content server
+    Description=calibre Content server
     After=network.target
 
     [Service]
     Type=simple
     User=mylinuxuser
     Group=mylinuxgroup
-    ExecStart=/opt/calibre/calibre-server "/path/to/calibre library directory"
+    ExecStart=/opt/calibre/calibre-server "/path/to/calibre library folder"
 
     [Install]
     WantedBy=multi-user.target
@@ -372,9 +377,9 @@ based Linux system. Just create the file
 
 Change ``mylinuxuser`` and ``mylinuxgroup`` to whatever user and group you want
 the server to run as. This should be the same user and group that own the files
-in the calibre library directory. Note that it is generally not a good idea to
+in the calibre library folder. Note that it is generally not a good idea to
 run the server as root. Also change the path to the calibre library
-directory to suit your system. You can add multiple libraries if needed. See
+folder to suit your system. You can add multiple libraries if needed. See
 the help for the ``calibre-server`` command.
 
 Now run::

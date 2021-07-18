@@ -9,7 +9,7 @@ __docformat__ = 'restructuredtext en'
 import os, posixpath, weakref, sys
 from functools import partial
 
-from PyQt5.Qt import (QMenu, Qt, QInputDialog, QToolButton, QDialog,
+from qt.core import (QMenu, Qt, QInputDialog, QToolButton, QDialog,
         QDialogButtonBox, QGridLayout, QLabel, QLineEdit, QIcon, QSize,
         QCoreApplication, pyqtSignal, QVBoxLayout, QTimer, QAction)
 
@@ -123,10 +123,10 @@ class MovedDialog(QDialog):  # {{{
         self.cd.setIcon(QIcon(I('document_open.png')))
         self.cd.clicked.connect(self.choose_dir)
         l.addWidget(self.cd, l.rowCount() - 1, 1, 1, 1)
-        self.bb = QDialogButtonBox(QDialogButtonBox.Abort)
-        b = self.bb.addButton(_('Library moved'), self.bb.AcceptRole)
+        self.bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Abort)
+        b = self.bb.addButton(_('Library moved'), QDialogButtonBox.ButtonRole.AcceptRole)
         b.setIcon(QIcon(I('ok.png')))
-        b = self.bb.addButton(_('Forget library'), self.bb.RejectRole)
+        b = self.bb.addButton(_('Forget library'), QDialogButtonBox.ButtonRole.RejectRole)
         b.setIcon(QIcon(I('edit-clear.png')))
         b.clicked.connect(self.forget_library)
         self.bb.accepted.connect(self.accept)
@@ -164,10 +164,10 @@ class BackupStatus(QDialog):  # {{{
         self.msg = QLabel('')
         self.msg.setWordWrap(True)
         l.addWidget(self.msg)
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Close)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        b = bb.addButton(_('Queue &all books for backup'), bb.ActionRole)
+        b = bb.addButton(_('Queue &all books for backup'), QDialogButtonBox.ButtonRole.ActionRole)
         b.clicked.connect(self.mark_all_dirty)
         b.setIcon(QIcon(I('lt.png')))
         l.addWidget(bb)
@@ -201,6 +201,18 @@ class BackupStatus(QDialog):  # {{{
 # }}}
 
 
+current_change_library_action_pi = None
+
+
+def set_change_library_action_plugin(pi):
+    global current_change_library_action_pi
+    current_change_library_action_pi = pi
+
+
+def get_change_library_action_plugin():
+    return current_change_library_action_pi
+
+
 class ChooseLibraryAction(InterfaceAction):
 
     name = 'Choose Library'
@@ -208,8 +220,9 @@ class ChooseLibraryAction(InterfaceAction):
             _('Choose calibre library to work with'), None)
     dont_add_to = frozenset(('context-menu-device',))
     action_add_menu = True
-    action_menu_clone_qaction = _('Switch/create library...')
+    action_menu_clone_qaction = _('Switch/create library')
     restore_view_state = pyqtSignal(object)
+    rebuild_change_library_menus = pyqtSignal()
 
     def genesis(self):
         self.prev_lname = self.last_lname = ''
@@ -219,8 +232,8 @@ class ChooseLibraryAction(InterfaceAction):
         ac.triggered.connect(self.exim_data)
 
         self.stats = LibraryUsageStats()
-        self.popup_type = (QToolButton.InstantPopup if len(self.stats.stats) > 1 else
-                QToolButton.MenuButtonPopup)
+        self.popup_type = (QToolButton.ToolButtonPopupMode.InstantPopup if len(self.stats.stats) > 1 else
+                QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         if len(self.stats.stats) > 1:
             self.action_choose.triggered.connect(self.choose_library)
         else:
@@ -242,6 +255,10 @@ class ChooseLibraryAction(InterfaceAction):
             self.choose_menu.addAction(ac)
             self.delete_menu = QMenu(_('Remove library'))
             self.delete_menu_action = self.choose_menu.addMenu(self.delete_menu)
+            self.vl_to_apply_menu = QMenu('waiting ...')
+            self.vl_to_apply_action = self.choose_menu.addMenu(self.vl_to_apply_menu)
+            self.rebuild_change_library_menus.connect(self.build_menus,
+                                                      type=Qt.ConnectionType.QueuedConnection)
             self.choose_menu.addAction(self.action_exim)
         else:
             self.choose_menu.addAction(ac)
@@ -257,7 +274,7 @@ class ChooseLibraryAction(InterfaceAction):
             ac.setVisible(False)
             connect_lambda(ac.triggered, self, lambda self:
                     self.switch_requested(self.qs_locations[int(self.gui.sender().objectName())]),
-                    type=Qt.QueuedConnection)
+                    type=Qt.ConnectionType.QueuedConnection)
             self.choose_menu.addAction(ac)
 
         self.rename_separator = self.choose_menu.addSeparator()
@@ -265,26 +282,26 @@ class ChooseLibraryAction(InterfaceAction):
         self.maintenance_menu = QMenu(_('Library maintenance'))
         ac = self.create_action(spec=(_('Library metadata backup status'),
                         'lt.png', None, None), attr='action_backup_status')
-        ac.triggered.connect(self.backup_status, type=Qt.QueuedConnection)
+        ac.triggered.connect(self.backup_status, type=Qt.ConnectionType.QueuedConnection)
         self.maintenance_menu.addAction(ac)
         ac = self.create_action(spec=(_('Check library'), 'lt.png',
                                       None, None), attr='action_check_library')
-        ac.triggered.connect(self.check_library, type=Qt.QueuedConnection)
+        ac.triggered.connect(self.check_library, type=Qt.ConnectionType.QueuedConnection)
         self.maintenance_menu.addAction(ac)
         ac = self.create_action(spec=(_('Restore database'), 'lt.png',
                                       None, None),
                                       attr='action_restore_database')
-        ac.triggered.connect(self.restore_database, type=Qt.QueuedConnection)
+        ac.triggered.connect(self.restore_database, type=Qt.ConnectionType.QueuedConnection)
         self.maintenance_menu.addAction(ac)
 
         self.choose_menu.addMenu(self.maintenance_menu)
         self.view_state_map = {}
         self.restore_view_state.connect(self._restore_view_state,
-                type=Qt.QueuedConnection)
+                type=Qt.ConnectionType.QueuedConnection)
         ac = self.create_action(spec=(_('Switch to previous library'), 'lt.png',
                                       None, None),
                                       attr='action_previous_library')
-        ac.triggered.connect(self.switch_to_previous_library, type=Qt.QueuedConnection)
+        ac.triggered.connect(self.switch_to_previous_library, type=Qt.ConnectionType.QueuedConnection)
         self.gui.keyboard.register_shortcut(
             self.unique_name + '-' + 'action_previous_library',
             ac.text(), action=ac, group=self.action_spec[0], default_keys=('Ctrl+Alt+p',))
@@ -311,7 +328,7 @@ class ChooseLibraryAction(InterfaceAction):
                     _('Cannot export/import data while there are running jobs.'), show=True)
         from calibre.gui2.dialogs.exim import EximDialog
         d = EximDialog(parent=self.gui)
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             if d.restart_needed:
                 self.gui.iactions['Restart'].restart()
 
@@ -352,6 +369,7 @@ class ChooseLibraryAction(InterfaceAction):
 
     def initialization_complete(self):
         self.library_changed(self.gui.library_view.model().db)
+        set_change_library_action_plugin(self)
 
     def switch_to_previous_library(self):
         db = self.gui.library_view.model().db
@@ -366,6 +384,8 @@ class ChooseLibraryAction(InterfaceAction):
         if os.environ.get('CALIBRE_OVERRIDE_DATABASE_PATH', None):
             return
         db = self.gui.library_view.model().db
+        lname = self.stats.library_used(db)
+        self.vl_to_apply_action.setText(_('Apply Virtual library when %s is opened') % lname)
         locations = list(self.stats.locations(db))
 
         for ac in self.switch_actions:
@@ -416,9 +436,28 @@ class ChooseLibraryAction(InterfaceAction):
         self.gui.location_manager.set_switch_actions(quick_actions,
                 rename_actions, delete_actions, qs_actions,
                 self.action_choose)
+        # VL at startup
+        self.vl_to_apply_menu.clear()
+        restrictions = sorted(db.prefs['virtual_libraries'], key=sort_key)
+        # check that the virtual library choice still exists
+        vl_at_startup = db.prefs['virtual_lib_on_startup']
+        if vl_at_startup and vl_at_startup not in restrictions:
+            vl_at_startup = db.prefs['virtual_lib_on_startup'] = ''
+        restrictions.insert(0, '')
+        for vl in restrictions:
+            if vl == vl_at_startup:
+                self.vl_to_apply_menu.addAction(QIcon(I('ok.png')), vl if vl else _('No Virtual library'),
+                                                Dispatcher(partial(self.change_vl_at_startup_requested, vl)))
+            else:
+                self.vl_to_apply_menu.addAction(vl if vl else _('No Virtual library'),
+                                                Dispatcher(partial(self.change_vl_at_startup_requested, vl)))
         # Allow the cloned actions in the OS X global menubar to update
         for a in (self.qaction, self.menuless_qaction):
             a.changed.emit()
+
+    def change_vl_at_startup_requested(self, vl):
+        self.gui.library_view.model().db.prefs['virtual_lib_on_startup'] = vl
+        self.build_menus()
 
     def location_selected(self, loc):
         enabled = loc == 'library'
@@ -445,7 +484,7 @@ class ChooseLibraryAction(InterfaceAction):
                     newloc, show=True)
         if (iswindows and len(newloc) > LibraryDatabase.WINDOWS_LIBRARY_PATH_LIMIT):
             return error_dialog(self.gui, _('Too long'),
-                    _('Path to library too long. Must be less than'
+                    _('Path to library too long. It must be less than'
                     ' %d characters.')%LibraryDatabase.WINDOWS_LIBRARY_PATH_LIMIT,
                     show=True)
         if not os.path.exists(loc):
@@ -505,7 +544,7 @@ class ChooseLibraryAction(InterfaceAction):
         db = m.db
         if (iswindows and len(db.library_path) > LibraryDatabase.WINDOWS_LIBRARY_PATH_LIMIT):
             return error_dialog(self.gui, _('Too long'),
-                    _('Path to library too long. Must be less than'
+                    _('Path to library too long. It must be less than'
                     ' %d characters. Move your library to a location with'
                     ' a shorter path using Windows Explorer, then point'
                     ' calibre to the new location and try again.')%
@@ -547,7 +586,7 @@ class ChooseLibraryAction(InterfaceAction):
                 return
         else:
             return error_dialog(self.gui, _('Failed'),
-                    _('Database integrity check failed, click Show details'
+                    _('Database integrity check failed, click "Show details"'
                         ' for details.'), show=True, det_msg=d.error[1])
 
         self.gui.status_bar.show_message(
@@ -594,14 +633,14 @@ class ChooseLibraryAction(InterfaceAction):
             ret = d.exec_()
             self.build_menus()
             self.gui.iactions['Copy To Library'].build_menus()
-            if ret == d.Accepted:
+            if ret == QDialog.DialogCode.Accepted:
                 loc = d.newloc.replace('/', os.sep)
             else:
                 return
 
         # from calibre.utils.mem import memory
         # import weakref
-        # from PyQt5.Qt import QTimer
+        # from qt.core import QTimer
         # self.dbref = weakref.ref(self.gui.library_view.model().db)
         # self.before_mem = memory()
         self.gui.library_moved(loc, allow_rebuild=True)

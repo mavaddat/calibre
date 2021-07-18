@@ -1,10 +1,10 @@
 
-.. _dmr:
+.. _drm:
 
 Digital Rights Management (DRM)
 ===============================================
 
-Digital rights management (DRM) is a generic term for access control
+Digital Rights Management (DRM) is a generic term for access control
 technologies that can be used by hardware manufacturers, publishers, copyright
 holders and individuals to try to impose limitations on the usage of digital
 content and devices. It is also, sometimes, disparagingly described as Digital
@@ -15,7 +15,7 @@ to other forms of copy protection which can be circumvented without modifying
 the file or device, such as serial numbers or key-files. It can also refer to
 restrictions associated with specific instances of digital works or devices.
 DRM technologies attempt to control use of digital media by preventing access,
-copying or conversion to other formats by end users. See `wikipedia
+copying or conversion to other formats by end users. See `Wikipedia
 <https://en.wikipedia.org/wiki/Digital_rights_management>`_.
 
 
@@ -102,6 +102,6 @@ the long run this is detrimental to you.  If you have bought books from sellers
 that carry both DRMed as well as DRM-free books, not knowing if they carry DRM
 or not make it a point to leave a comment or review on the website informing
 future buyers of its DRM status. Many sellers do not think it important to
-clearly indicate to their buyers if an e-book carries DRM or not.  `Here
-<https://www.defectivebydesign.org/guide/ebooks>` you will find a Guide to
+clearly indicate to their buyers if an e-book carries DRM or not. `Here
+<https://www.defectivebydesign.org/guide/ebooks>`_ you will find a guide to
 DRM-free living.

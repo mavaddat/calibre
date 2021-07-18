@@ -30,6 +30,7 @@ def update_settings(settings):
     opts.paged_taps_scroll_by_screen = v'!!settings.paged_taps_scroll_by_screen'
     opts.scroll_auto_boundary_delay = settings.scroll_auto_boundary_delay
     opts.scroll_stop_boundaries = v'!!settings.scroll_stop_boundaries'
+    opts.reverse_page_turn_zones = v'!!settings.reverse_page_turn_zones'
     opts.user_stylesheet = settings.user_stylesheet
 
 update_settings()
@@ -110,7 +111,50 @@ def apply_colors(is_content_popup):
             border-radius: 50%;\
         }
         '''
+    hints_box_css = f'''
+            display: inline-block !important;\
+            position: absolute !important;\
+            text-indent: 0 !important;\
+            text-decoration: none !important;\
+            font-weight: bold !important;\
+            color: {selfg} !important;\
+            background: {selbg} !important;\
+            cursor: default !important;\
+            padding: 1px !important;\
+            border: solid 1px {opts.color_scheme.foreground} !important;\
+    '''
 
+    # reference mode hint box
+    text += f'''\n\n
+        .calibre-reference-mode [data-calibre-ref-num]::before {{
+            content: attr(data-calibre-ref-num) !important;\
+            {hints_box_css}
+        }}
+    '''
+
+    # follow links hint box
+    text += f'''\n\n
+        .calibre-hint-visible::before {{
+            content: attr(data-calibre-hint-render) !important;\
+            {hints_box_css}
+        }}
+
+        .calibre-hint-enter::before {{
+            background: #FF5733 !important; \
+        }}
+
+        .calibre-animated-hint {{
+            animation-name: calibre-animate-hint; \
+            animation-duration: 0.3s; \
+            animation-timing-function: ease-out; \
+            display: inline-block !important; \
+            text-indent: 0 !important; \
+        }}
+        @keyframes calibre-animate-hint {{
+            from {{ transform: scale(1); }}
+            to {{ transform: scale(2); }}
+        }}
+    '''
     ss.textContent = text
 
 

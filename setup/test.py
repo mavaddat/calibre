@@ -4,9 +4,11 @@
 
 
 import os
+import subprocess
+import sys
 import unittest
 
-from setup import Command, islinux, ismacos, iswindows, SRC
+from setup import SRC, Command, islinux, ismacos, iswindows
 
 TEST_MODULES = frozenset('srv db polish opf css docx cfi matcher icu smartypants build misc dbcli ebooks'.split())
 
@@ -37,8 +39,8 @@ class TestImports(unittest.TestCase):
         return count
 
     def test_import_of_all_python_modules(self):
-        exclude_modules = {'calibre.gui2.dbus_export.demo', 'calibre.gui2.dbus_export.gtk'}
         exclude_packages = {'calibre.devices.mtp.unix.upstream'}
+        exclude_modules = set()
         if not iswindows:
             exclude_modules |= {'calibre.utils.iphlpapi', 'calibre.utils.open_with.windows', 'calibre.devices.winusb'}
             exclude_packages |= {'calibre.utils.winreg', 'calibre.utils.windows'}
@@ -46,11 +48,10 @@ class TestImports(unittest.TestCase):
             exclude_modules.add('calibre.utils.open_with.osx')
         if not islinux:
             exclude_modules |= {
-                    'calibre.utils.dbus_service', 'calibre.linux',
+                    'calibre.linux',
                     'calibre.utils.linux_trash', 'calibre.utils.open_with.linux',
-                    'calibre.gui2.linux_file_dialogs'
+                    'calibre.gui2.linux_file_dialogs', 'calibre.devices.usbms.hal',
             }
-            exclude_packages.add('calibre.gui2.dbus_export')
         self.assertGreater(self.base_check(os.path.join(SRC, 'odf'), exclude_packages, exclude_modules), 10)
         base = os.path.join(SRC, 'calibre')
         self.assertGreater(self.base_check(base, exclude_packages, exclude_modules), 1000)
@@ -116,13 +117,13 @@ def find_tests(which_tests=None, exclude_tests=None):
         a(find_tests())
         from calibre.ebooks.metadata.html import find_tests
         a(find_tests())
-        from calibre.ebooks.pdf.test_html_writer import find_tests
-        a(find_tests())
         from calibre.utils.xml_parse import find_tests
         a(find_tests())
         from calibre.gui2.viewer.annotations import find_tests
         a(find_tests())
     if ok('misc'):
+        from calibre.ebooks.metadata.test_author_sort import find_tests
+        a(find_tests())
         from calibre.ebooks.metadata.tag_mapper import find_tests
         a(find_tests())
         from calibre.ebooks.metadata.author_mapper import find_tests
@@ -142,6 +143,8 @@ def find_tests(which_tests=None, exclude_tests=None):
         from calibre.gui2.viewer.convert_book import find_tests
         a(find_tests())
         from calibre.utils.hyphenation.test_hyphenation import find_tests
+        a(find_tests())
+        from calibre.live import find_tests
         a(find_tests())
         if iswindows:
             from calibre.utils.windows.wintest import find_tests
@@ -165,7 +168,7 @@ class Test(Command):
         parser.add_option('--test-verbosity', type=int, default=4, help='Test verbosity (0-4)')
         parser.add_option('--test-module', '--test-group', default=[], action='append', type='choice', choices=sorted(map(str, TEST_MODULES)),
                           help='The test module to run (can be specified more than once for multiple modules). Choices: %s' % ', '.join(sorted(TEST_MODULES)))
-        parser.add_option('--test-name', default=[], action='append',
+        parser.add_option('--test-name', '-n', default=[], action='append',
                           help='The name of an individual test to run. Can be specified more than once for multiple tests. The name of the'
                           ' test is the name of the test function without the leading test_. For example, the function test_something()'
                           ' can be run by specifying the name "something".')
@@ -174,9 +177,19 @@ class Test(Command):
                           ' Choices: %s' % ', '.join(sorted(TEST_MODULES)))
         parser.add_option('--exclude-test-name', default=[], action='append',
                           help='The name of an individual test to be excluded from the test run. Can be specified more than once for multiple tests.')
+        parser.add_option('--under-sanitize', default=False, action='store_true',
+                          help='Run the test suite with the sanitizer preloaded')
 
     def run(self, opts):
-        from calibre.utils.run_tests import run_cli, filter_tests_by_name, remove_tests_by_name
+        if opts.under_sanitize and 'libasan' not in os.environ.get('LD_PRELOAD', ''):
+            os.environ['LD_PRELOAD'] = os.path.abspath(subprocess.check_output('gcc -print-file-name=libasan.so'.split()).decode('utf-8').strip())
+            os.environ['ASAN_OPTIONS'] = 'detect_leaks=0'
+            self.info(f'Re-execing with LD_PRELOAD={os.environ["LD_PRELOAD"]}')
+            sys.stdout.flush()
+            os.execl('setup.py', *sys.argv)
+        from calibre.utils.run_tests import (
+            filter_tests_by_name, remove_tests_by_name, run_cli
+        )
         tests = find_tests(which_tests=frozenset(opts.test_module), exclude_tests=frozenset(opts.exclude_test_module))
         if opts.test_name:
             tests = filter_tests_by_name(tests, *opts.test_name)

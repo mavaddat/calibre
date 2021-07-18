@@ -265,7 +265,8 @@ class NumericSearch(object):  # {{{
                 cast = lambda x: 0 if x is None else int(x)
                 adjust = lambda x: x // 2
             else:
-                cast = float if dt in ('float', 'composite', 'half-rating') else int
+                # Datatype is empty if the source is a template. Assume float
+                cast = float if dt in ('float', 'composite', 'half-rating', '') else int
 
             mult = 1.0
             if len(query) > 1:
@@ -423,7 +424,11 @@ class SavedSearchQueries(object):  # {{{
             db._set_pref(self.opt_name, self.queries)
 
     def lookup(self, name):
-        return self.queries.get(self.force_unicode(name), None)
+        sn = self.force_unicode(name).lower()
+        for n, q in self.queries.items():
+            if sn == n.lower():
+                return q
+        return None
 
     def delete(self, name):
         db = self.db
@@ -508,7 +513,8 @@ class Parser(SearchQueryParser):  # {{{
             if not vl:
                 raise ParseException(_('No such Virtual library: {}').format(query))
             try:
-                return candidates & self.dbcache.books_in_virtual_library(query)
+                return candidates & self.dbcache.books_in_virtual_library(
+                            query, virtual_fields=self.virtual_fields)
             except RuntimeError:
                 raise ParseException(_('Virtual library search is recursive: {}').format(query))
 
@@ -603,7 +609,8 @@ class Parser(SearchQueryParser):  # {{{
             if (fm['is_multiple'] and
                 len(query) > 1 and query[0] == '#' and query[1] in '=<>!'):
                 return self.num_search(icu_lower(query[1:]), partial(
-                        self.dbcache.fields[location].iter_counts, candidates),
+                        self.dbcache.fields[location].iter_counts, candidates,
+                        get_metadata=self.dbcache._get_proxy_metadata),
                     location, dt, candidates)
 
             # take care of boolean special case

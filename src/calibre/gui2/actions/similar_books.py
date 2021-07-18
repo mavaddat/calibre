@@ -7,7 +7,7 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 
-from PyQt5.Qt import QToolButton
+from qt.core import QToolButton
 
 from calibre.gui2.actions import InterfaceAction
 from polyglot.builtins import string_or_bytes
@@ -16,8 +16,8 @@ from polyglot.builtins import string_or_bytes
 class SimilarBooksAction(InterfaceAction):
 
     name = 'Similar Books'
-    action_spec = (_('Similar books...'), 'similar.png', _('Show books similar to the current book'), None)
-    popup_type = QToolButton.InstantPopup
+    action_spec = (_('Similar books'), 'similar.png', _('Show books similar to the current book'), None)
+    popup_type = QToolButton.ToolButtonPopupMode.InstantPopup
     action_type = 'current'
     action_add_menu = True
 

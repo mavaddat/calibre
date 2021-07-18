@@ -6,12 +6,13 @@ __license__ = 'GPL v3'
 __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 
 import importlib
-
-from PyQt5.Qt import QToolButton
+import sys
+from qt.core import QToolButton
 
 from calibre import prints
+from calibre.customize import PluginInstallationType
 from calibre.customize.ui import all_edit_book_tool_plugins
-from calibre.gui2.tweak_book import tprefs, current_container
+from calibre.gui2.tweak_book import current_container, tprefs
 from calibre.gui2.tweak_book.boss import get_boss
 from polyglot.builtins import itervalues, unicode_type
 
@@ -62,7 +63,7 @@ class Tool(object):
     def register_shortcut(self, qaction, unique_name, default_keys=(), short_text=None, description=None, **extra_data):
         '''
         Register a keyboard shortcut that will trigger the specified ``qaction``. This keyboard shortcut
-        will become automatically customizable by the user in the Keyboard section of the editor preferences.
+        will become automatically customizable by the user in the Keyboard shortcuts section of the editor preferences.
 
         :param qaction: A QAction object, it will be triggered when the
             configured key combination is pressed by the user.
@@ -152,8 +153,8 @@ def create_plugin_action(plugin, tool, for_toolbar, actions=None, toolbar_action
             if toolbar_actions is not None:
                 toolbar_actions[sid] = ac
                 plugin_toolbar_actions.append(ac)
-            ac.popup_mode = {'instant':QToolButton.InstantPopup, 'button':QToolButton.MenuButtonPopup}.get(
-                tool.toolbar_button_popup_mode, QToolButton.DelayedPopup)
+            ac.popup_mode = {'instant':QToolButton.ToolButtonPopupMode.InstantPopup, 'button':QToolButton.ToolButtonPopupMode.MenuButtonPopup}.get(
+                tool.toolbar_button_popup_mode, QToolButton.ToolButtonPopupMode.DelayedPopup)
         else:
             if plugin_menu_actions is not None:
                 plugin_menu_actions.append(ac)
@@ -168,7 +169,16 @@ def create_plugin_actions(actions, toolbar_actions, plugin_menu_actions):
     del plugin_toolbar_actions[:]
 
     for plugin in all_edit_book_tool_plugins():
-        for tool in load_plugin_tools(plugin):
+        try:
+            tools = tuple(load_plugin_tools(plugin))
+        except Exception:
+            if plugin.installation_type is PluginInstallationType.BUILTIN:
+                raise
+            print('Failed to load third-party plugin:', plugin.name, file=sys.stderr)
+            import traceback
+            traceback.print_exc()
+            continue
+        for tool in tools:
             _tool_memory.append(tool)
             if tool.allowed_in_toolbar:
                 create_plugin_action(plugin, tool, True, actions, toolbar_actions, plugin_menu_actions)

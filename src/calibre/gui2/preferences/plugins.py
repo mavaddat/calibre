@@ -9,11 +9,12 @@ __docformat__ = 'restructuredtext en'
 import textwrap, os
 from collections import OrderedDict
 
-from PyQt5.Qt import (Qt, QModelIndex, QAbstractItemModel, QIcon,
-        QBrush)
+from qt.core import (Qt, QMenu, QModelIndex, QAbstractItemModel, QIcon,
+        QBrush, QDialog, QItemSelectionModel, QAbstractItemView)
 
 from calibre.gui2.preferences import ConfigWidgetBase, test_widget
 from calibre.gui2.preferences.plugins_ui import Ui_Form
+from calibre.customize import PluginInstallationType
 from calibre.customize.ui import (initialized_plugins, is_disabled, enable_plugin,
                                  disable_plugin, plugin_customization, add_plugin,
                                  remove_plugin, NameConflict)
@@ -39,7 +40,7 @@ class PluginModel(QAbstractItemModel, AdaptSQP):  # {{{
         SearchQueryParser.__init__(self, ['all'])
         self.show_only_user_plugins = show_only_user_plugins
         self.icon = QIcon(I('plugins.png'))
-        p = QIcon(self.icon).pixmap(64, 64, QIcon.Disabled, QIcon.On)
+        p = QIcon(self.icon).pixmap(64, 64, QIcon.Mode.Disabled, QIcon.State.On)
         self.disabled_icon = QIcon(p)
         self._p = p
         self.populate()
@@ -53,7 +54,7 @@ class PluginModel(QAbstractItemModel, AdaptSQP):  # {{{
     def populate(self):
         self._data = {}
         for plugin in initialized_plugins():
-            if (getattr(plugin, 'plugin_path', None) is None and self.show_only_user_plugins):
+            if (getattr(plugin, 'installation_type', None) is not PluginInstallationType.EXTERNAL and self.show_only_user_plugins):
                 continue
             if plugin.type not in self._data:
                 self._data[plugin.type] = [plugin]
@@ -190,19 +191,19 @@ class PluginModel(QAbstractItemModel, AdaptSQP):  # {{{
     def flags(self, index):
         if not index.isValid():
             return 0
-        flags = Qt.ItemIsSelectable | Qt.ItemIsEnabled
+        flags = Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled
         return flags
 
     def data(self, index, role):
         if not index.isValid():
             return None
         if index.internalId() == 0:
-            if role == Qt.DisplayRole:
+            if role == Qt.ItemDataRole.DisplayRole:
                 return self.categories[index.row()]
         else:
             plugin = self.index_to_plugin(index)
             disabled = is_disabled(plugin)
-            if role == Qt.DisplayRole:
+            if role == Qt.ItemDataRole.DisplayRole:
                 ver = '.'.join(map(unicode_type, plugin.version))
                 desc = '\n'.join(textwrap.wrap(plugin.description, 100))
                 ans='%s (%s) %s %s\n%s'%(plugin.name, ver, _('by'), plugin.author, desc)
@@ -211,12 +212,14 @@ class PluginModel(QAbstractItemModel, AdaptSQP):  # {{{
                     ans += _('\nCustomization: ')+c
                 if disabled:
                     ans += _('\n\nThis plugin has been disabled')
+                if plugin.installation_type is PluginInstallationType.SYSTEM:
+                    ans += _('\n\nThis plugin is installed system-wide and can not be managed from within calibre')
                 return (ans)
-            if role == Qt.DecorationRole:
+            if role == Qt.ItemDataRole.DecorationRole:
                 return self.disabled_icon if disabled else self.icon
-            if role == Qt.ForegroundRole and disabled:
-                return (QBrush(Qt.gray))
-            if role == Qt.UserRole:
+            if role == Qt.ItemDataRole.ForegroundRole and disabled:
+                return (QBrush(Qt.GlobalColor.gray))
+            if role == Qt.ItemDataRole.UserRole:
                 return plugin
         return None
 
@@ -247,6 +250,14 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         self.previous_button.clicked.connect(self.find_previous)
         self.changed_signal.connect(self.reload_store_plugins)
         self.user_installed_plugins.stateChanged.connect(self.show_user_installed_plugins)
+        self.plugin_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.plugin_view.customContextMenuRequested.connect(self.show_context_menu)
+
+    def show_context_menu(self, pos):
+        menu = QMenu(self)
+        menu.addAction(_('Expand all'), self.plugin_view.expandAll)
+        menu.addAction(_('Collapse all'), self.plugin_view.collapseAll)
+        menu.exec_(self.plugin_view.mapToGlobal(pos))
 
     def show_user_installed_plugins(self, state):
         self._plugin_model.toggle_shown_plugins(self.user_installed_plugins.isChecked())
@@ -260,11 +271,10 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         self.highlight_index(idx)
 
     def highlight_index(self, idx):
-        self.plugin_view.selectionModel().select(idx,
-                self.plugin_view.selectionModel().ClearAndSelect)
+        self.plugin_view.selectionModel().select(idx, QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.plugin_view.setCurrentIndex(idx)
-        self.plugin_view.setFocus(Qt.OtherFocusReason)
-        self.plugin_view.scrollTo(idx, self.plugin_view.EnsureVisible)
+        self.plugin_view.setFocus(Qt.FocusReason.OtherFocusReason)
+        self.plugin_view.scrollTo(idx, QAbstractItemView.ScrollHint.EnsureVisible)
 
     def find_next(self, *args):
         idx = self.plugin_view.currentIndex()
@@ -325,7 +335,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
             self.check_for_add_to_toolbars(plugin, previously_installed=plugin.name in installed_plugins)
             info_dialog(self, _('Success'),
                     _('Plugin <b>{0}</b> successfully installed under <b>'
-                        '{1} plugins</b>. You may have to restart calibre '
+                        '{1}</b>. You may have to restart calibre '
                         'for the plugin to take effect.').format(plugin.name, plugin.type),
                     show=True, show_copy_button=False)
             idx = self._plugin_model.plugin_to_index_by_properties(plugin)
@@ -449,7 +459,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
 
         from calibre.gui2.dialogs.choose_plugin_toolbars import ChoosePluginToolbarsDialog
         d = ChoosePluginToolbarsDialog(self, plugin_action, allowed_locations)
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             for key, text in d.selected_locations():
                 installed_actions = list(gprefs.get('action-layout-'+key, []))
                 installed_actions.append(plugin_action.name)
@@ -465,6 +475,6 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
 
 
 if __name__ == '__main__':
-    from PyQt5.Qt import QApplication
+    from qt.core import QApplication
     app = QApplication([])
     test_widget('Advanced', 'Plugins')

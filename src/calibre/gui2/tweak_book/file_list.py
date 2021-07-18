@@ -9,12 +9,12 @@ import sys
 import textwrap
 from collections import Counter, OrderedDict, defaultdict
 from functools import partial
-from PyQt5.Qt import (
-    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFont, QFormLayout,
-    QGridLayout, QIcon, QInputDialog, QLabel, QLineEdit, QListWidget,
+from qt.core import (
+    QApplication, QCheckBox, QDialog, QDialogButtonBox, QFont, QFormLayout, QItemSelectionModel,
+    QGridLayout, QIcon, QInputDialog, QLabel, QLineEdit, QListWidget, QAbstractItemView,
     QListWidgetItem, QMenu, QPainter, QPixmap, QRadioButton, QScrollArea, QSize,
     QSpinBox, QStyle, QStyledItemDelegate, Qt, QTimer, QTreeWidget, QTreeWidgetItem,
-    QVBoxLayout, QWidget, pyqtSignal
+    QVBoxLayout, QWidget, pyqtSignal, sip
 )
 
 from calibre import human_readable, sanitize_file_name
@@ -40,17 +40,12 @@ from calibre.utils.fonts.utils import get_font_names
 from calibre.utils.icu import numeric_sort_key
 from calibre_extensions.progress_indicator import set_no_activate_on_click
 from polyglot.binary import as_hex_unicode
-from polyglot.builtins import filter, iteritems, itervalues, map, range, unicode_type
-
-try:
-    from PyQt5 import sip
-except ImportError:
-    import sip
+from polyglot.builtins import filter, iteritems, map, range, unicode_type
 
 
 FILE_COPY_MIME = 'application/calibre-edit-book-files'
 TOP_ICON_SIZE = 24
-NAME_ROLE = Qt.UserRole
+NAME_ROLE = Qt.ItemDataRole.UserRole
 CATEGORY_ROLE = NAME_ROLE + 1
 LINEAR_ROLE = CATEGORY_ROLE + 1
 MIME_ROLE = LINEAR_ROLE + 1
@@ -106,12 +101,12 @@ def get_bulk_rename_settings(parent, number, msg=None, sanitize=sanitize_file_na
         d.spine_order.setToolTip(textwrap.fill(_(
             'Rename the selected files according to the order they appear in the book, instead of the order they were selected in.')))
         l.addRow(d.spine_order)
-    d.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+    d.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
     bb.accepted.connect(d.accept), bb.rejected.connect(d.reject)
     l.addRow(bb)
     ans = {'prefix': None, 'start': None}
 
-    if d.exec_() == d.Accepted:
+    if d.exec_() == QDialog.DialogCode.Accepted:
         prefix = sanitize(unicode_type(d.prefix.text()))
         previous[category] = prefix
         tprefs.set('file-list-bulk-rename-prefix', previous)
@@ -165,16 +160,23 @@ class ItemDelegate(QStyledItemDelegate):  # {{{
 
     def paint(self, painter, option, index):
         top_level = not index.parent().isValid()
-        hover = option.state & QStyle.State_MouseOver
+        hover = option.state & QStyle.StateFlag.State_MouseOver
+        cc = current_container()
+
+        def safe_size(index):
+            try:
+                return cc.filesize(str(index.data(NAME_ROLE) or ''))
+            except OSError:
+                return 0
+
         if hover:
             if top_level:
-                suffix = '%s(%d)' % (NBSP, index.model().rowCount(index))
+                count = index.model().rowCount(index)
+                total_size = human_readable(sum(safe_size(index.child(r, 0)) for r in range(count)))
+                suffix = f'{NBSP}{count}@{total_size}'
             else:
-                try:
-                    suffix = NBSP + human_readable(current_container().filesize(unicode_type(index.data(NAME_ROLE) or '')))
-                except EnvironmentError:
-                    suffix = NBSP + human_readable(0)
-            br = painter.boundingRect(option.rect, Qt.AlignRight|Qt.AlignVCenter, suffix)
+                suffix = NBSP + human_readable(safe_size(index))
+            br = painter.boundingRect(option.rect, Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter, suffix)
         if top_level and index.row() > 0:
             option.rect.adjust(0, 5, 0, 0)
             painter.drawLine(option.rect.topLeft(), option.rect.topRight())
@@ -184,7 +186,7 @@ class ItemDelegate(QStyledItemDelegate):  # {{{
         QStyledItemDelegate.paint(self, painter, option, index)
         if hover:
             option.rect.adjust(0, 0, br.width(), 0)
-            painter.drawText(option.rect, Qt.AlignRight|Qt.AlignVCenter, suffix)
+            painter.drawText(option.rect, Qt.AlignmentFlag.AlignRight|Qt.AlignmentFlag.AlignVCenter, suffix)
 # }}}
 
 
@@ -246,23 +248,23 @@ class FileList(QTreeWidget, OpenWithHandler):
         self.current_edited_name = None
         self.delegate = ItemDelegate(self)
         self.delegate.rename_requested.connect(self.rename_requested)
-        self.setTextElideMode(Qt.ElideMiddle)
+        self.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.setItemDelegate(self.delegate)
         self.setIconSize(QSize(16, 16))
         self.header().close()
         self.setDragEnabled(True)
-        self.setEditTriggers(self.EditKeyPressed)
-        self.setSelectionMode(self.ExtendedSelection)
+        self.setEditTriggers(QAbstractItemView.EditTrigger.EditKeyPressed)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.viewport().setAcceptDrops(True)
         self.setDropIndicatorShown(True)
-        self.setDragDropMode(self.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setAutoScroll(True)
         self.setAutoScrollMargin(TOP_ICON_SIZE*2)
-        self.setDefaultDropAction(Qt.MoveAction)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setAutoExpandDelay(1000)
         self.setAnimated(True)
         self.setMouseTracking(True)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
         self.root = self.invisibleRootItem()
         self.emblem_cache = {}
@@ -307,21 +309,21 @@ class FileList(QTreeWidget, OpenWithHandler):
         for category, item in iteritems(self.categories):
             item.setExpanded(category in state['expanded'])
         self.verticalScrollBar().setValue(state['pos'])
-        for parent in itervalues(self.categories):
+        for parent in self.categories.values():
             for c in (parent.child(i) for i in range(parent.childCount())):
                 name = unicode_type(c.data(0, NAME_ROLE) or '')
                 if name in state['selected']:
                     c.setSelected(True)
 
     def item_from_name(self, name):
-        for parent in itervalues(self.categories):
+        for parent in self.categories.values():
             for c in (parent.child(i) for i in range(parent.childCount())):
                 q = unicode_type(c.data(0, NAME_ROLE) or '')
                 if q == name:
                     return c
 
     def select_name(self, name, set_as_current_index=False):
-        for parent in itervalues(self.categories):
+        for parent in self.categories.values():
             for c in (parent.child(i) for i in range(parent.childCount())):
                 q = unicode_type(c.data(0, NAME_ROLE) or '')
                 c.setSelected(q == name)
@@ -331,14 +333,14 @@ class FileList(QTreeWidget, OpenWithHandler):
                         self.setCurrentItem(c)
 
     def select_names(self, names, current_name=None):
-        for parent in itervalues(self.categories):
+        for parent in self.categories.values():
             for c in (parent.child(i) for i in range(parent.childCount())):
                 q = unicode_type(c.data(0, NAME_ROLE) or '')
                 c.setSelected(q in names)
                 if q == current_name:
                     self.scrollToItem(c)
                     s = self.selectionModel()
-                    s.setCurrentIndex(self.indexFromItem(c), s.NoUpdate)
+                    s.setCurrentIndex(self.indexFromItem(c), QItemSelectionModel.SelectionFlag.NoUpdate)
 
     def mark_name_as_current(self, name):
         current = self.item_from_name(name)
@@ -346,7 +348,7 @@ class FileList(QTreeWidget, OpenWithHandler):
             if self.current_edited_name is not None:
                 ci = self.item_from_name(self.current_edited_name)
                 if ci is not None:
-                    ci.setData(0, Qt.FontRole, None)
+                    ci.setData(0, Qt.ItemDataRole.FontRole, None)
             self.current_edited_name = name
             self.mark_item_as_current(current)
 
@@ -354,13 +356,13 @@ class FileList(QTreeWidget, OpenWithHandler):
         font = QFont(self.font())
         font.setItalic(True)
         font.setBold(True)
-        item.setData(0, Qt.FontRole, font)
+        item.setData(0, Qt.ItemDataRole.FontRole, font)
 
     def clear_currently_edited_name(self):
         if self.current_edited_name:
             ci = self.item_from_name(self.current_edited_name)
             if ci is not None:
-                ci.setData(0, Qt.FontRole, None)
+                ci.setData(0, Qt.ItemDataRole.FontRole, None)
         self.current_edited_name = None
 
     def build(self, container, preserve_state=True):
@@ -370,19 +372,19 @@ class FileList(QTreeWidget, OpenWithHandler):
             state = self.get_state()
         self.clear()
         self.root = self.invisibleRootItem()
-        self.root.setFlags(Qt.ItemIsDragEnabled)
+        self.root.setFlags(Qt.ItemFlag.ItemIsDragEnabled)
         self.categories = {}
         for category, text, __ in CATEGORIES:
             self.categories[category] = i = QTreeWidgetItem(self.root, 0)
             i.setText(0, text)
-            i.setData(0, Qt.DecorationRole, self.top_level_pixmap_cache[category])
+            i.setData(0, Qt.ItemDataRole.DecorationRole, self.top_level_pixmap_cache[category])
             f = i.font(0)
             f.setBold(True)
             i.setFont(0, f)
             i.setData(0, NAME_ROLE, category)
-            flags = Qt.ItemIsEnabled
+            flags = Qt.ItemFlag.ItemIsEnabled
             if category == 'text':
-                flags |= Qt.ItemIsDropEnabled
+                flags |= Qt.ItemFlag.ItemIsDropEnabled
             i.setFlags(flags)
 
         processed, seen = {}, {}
@@ -390,7 +392,7 @@ class FileList(QTreeWidget, OpenWithHandler):
         cover_page_name = get_cover_page_name(container)
         cover_image_name = get_raster_cover_name(container)
         manifested_names = set()
-        for names in itervalues(container.manifest_type_map):
+        for names in container.manifest_type_map.values():
             manifested_names |= set(names)
 
         def get_category(name, mt):
@@ -448,13 +450,13 @@ class FileList(QTreeWidget, OpenWithHandler):
                 else:
                     canvas = QPixmap((num * w) + ((num-1)*2), h)
                     canvas.setDevicePixelRatio(pixmaps[0].devicePixelRatio())
-                    canvas.fill(Qt.transparent)
+                    canvas.fill(Qt.GlobalColor.transparent)
                     painter = QPainter(canvas)
                     for i, pm in enumerate(pixmaps):
                         painter.drawPixmap(int(i * (w + 2)/canvas.devicePixelRatio()), 0, pm)
                     painter.end()
                     icon = self.rendered_emblem_cache[emblems] = canvas
-            item.setData(0, Qt.DecorationRole, icon)
+            item.setData(0, Qt.ItemDataRole.DecorationRole, icon)
 
         cannot_be_renamed = container.names_that_must_not_be_changed
         ncx_mime = guess_type('a.ncx')
@@ -465,11 +467,11 @@ class FileList(QTreeWidget, OpenWithHandler):
             icat = get_category(name, imt)
             category = 'text' if linear is not None else ({'text':'misc'}.get(icat, icat))
             item = QTreeWidgetItem(self.categories['text' if linear is not None else category], 1)
-            flags = Qt.ItemIsEnabled | Qt.ItemIsSelectable
+            flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
             if category == 'text':
-                flags |= Qt.ItemIsDragEnabled
+                flags |= Qt.ItemFlag.ItemIsDragEnabled
             if name not in cannot_be_renamed:
-                flags |= Qt.ItemIsEditable
+                flags |= Qt.ItemFlag.ItemIsEditable
             item.setFlags(flags)
             item.setStatusTip(0, _('Full path: ') + name)
             item.setData(0, NAME_ROLE, name)
@@ -512,7 +514,7 @@ class FileList(QTreeWidget, OpenWithHandler):
 
             render_emblems(item, emblems)
             if tooltips:
-                item.setData(0, Qt.ToolTipRole, '\n'.join(tooltips))
+                item.setData(0, Qt.ItemDataRole.ToolTipRole, '\n'.join(tooltips))
             return item
 
         for name, linear in container.spine_names:
@@ -526,7 +528,7 @@ class FileList(QTreeWidget, OpenWithHandler):
         for name, c in iteritems(self.categories):
             c.setExpanded(True)
             if name != 'text':
-                c.sortChildren(1, Qt.AscendingOrder)
+                c.sortChildren(1, Qt.SortOrder.AscendingOrder)
 
         if preserve_state:
             self.set_state(state)
@@ -553,10 +555,37 @@ class FileList(QTreeWidget, OpenWithHandler):
             self.font_name_cache[key] = ans
         return self.font_name_cache[key]
 
+    def select_all_in_category(self, cname):
+        parent = self.categories[cname]
+        for c in (parent.child(i) for i in range(parent.childCount())):
+            c.setSelected(True)
+
+    def deselect_all_in_category(self, cname):
+        parent = self.categories[cname]
+        for c in (parent.child(i) for i in range(parent.childCount())):
+            c.setSelected(False)
+
     def show_context_menu(self, point):
         item = self.itemAt(point)
-        if item is None or item in tuple(itervalues(self.categories)):
+        if item is None:
             return
+        if item in self.categories.values():
+            m = self.build_category_context_menu(item)
+        else:
+            m = self.build_item_context_menu(item)
+        if m is not None and len(list(m.actions())) > 0:
+            m.popup(self.mapToGlobal(point))
+
+    def build_category_context_menu(self, item):
+        m = QMenu(self)
+        cn = str(item.data(0, NAME_ROLE) or '')
+        if cn:
+            name = item.data(0, Qt.DisplayRole)
+            m.addAction(_('Select all {} files').format(name), partial(self.select_all_in_category, cn))
+            m.addAction(_('De-select all {} files').format(name), partial(self.deselect_all_in_category, cn))
+        return m
+
+    def build_item_context_menu(self, item):
         m = QMenu(self)
         sel = self.selectedItems()
         num = len(sel)
@@ -603,7 +632,7 @@ class FileList(QTreeWidget, OpenWithHandler):
         for item in sel:
             selected_map[unicode_type(item.data(0, CATEGORY_ROLE) or '')].append(unicode_type(item.data(0, NAME_ROLE) or ''))
 
-        for items in itervalues(selected_map):
+        for items in selected_map.values():
             items.sort(key=self.index_of_name)
 
         if selected_map['text']:
@@ -613,9 +642,7 @@ class FileList(QTreeWidget, OpenWithHandler):
             m.addAction(QIcon(I('merge.png')), _('&Merge selected text files'), partial(self.start_merge, 'text', selected_map['text']))
         if len(selected_map['styles']) > 1:
             m.addAction(QIcon(I('merge.png')), _('&Merge selected style files'), partial(self.start_merge, 'styles', selected_map['styles']))
-
-        if len(list(m.actions())) > 0:
-            m.popup(self.mapToGlobal(point))
+        return m
 
     def choose_open_with(self, file_name, fmt):
         from calibre.gui2.open_with import choose_program
@@ -636,7 +663,7 @@ class FileList(QTreeWidget, OpenWithHandler):
 
     def start_merge(self, category, names):
         d = MergeDialog(names, self)
-        if d.exec_() == d.Accepted and d.ans:
+        if d.exec_() == QDialog.DialogCode.Accepted and d.ans:
             self.merge_requested.emit(category, names, d.ans)
 
     def edit_current_item(self):
@@ -666,7 +693,7 @@ class FileList(QTreeWidget, OpenWithHandler):
         self.mark_requested.emit(name, 'titlepage:%r' % move_to_start)
 
     def keyPressEvent(self, ev):
-        if ev.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+        if ev.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             ev.accept()
             self.request_delete()
         else:
@@ -843,7 +870,7 @@ class FileList(QTreeWidget, OpenWithHandler):
 
     @property
     def all_files(self):
-        return (category.child(i) for category in itervalues(self.categories) for i in range(category.childCount()))
+        return (category.child(i) for category in self.categories.values() for i in range(category.childCount()))
 
     @property
     def searchable_names(self):
@@ -928,23 +955,23 @@ class FileList(QTreeWidget, OpenWithHandler):
         l.addWidget(s)
         s.setDragEnabled(True)
         s.setDropIndicatorShown(True)
-        s.setDragDropMode(self.InternalMove)
+        s.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         s.setAutoScroll(True)
-        s.setDefaultDropAction(Qt.MoveAction)
+        s.setDefaultDropAction(Qt.DropAction.MoveAction)
         for name in sheets:
             i = QListWidgetItem(name, s)
-            flags = Qt.ItemIsEnabled | Qt.ItemIsUserCheckable | Qt.ItemIsDragEnabled | Qt.ItemIsSelectable
+            flags = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsDragEnabled | Qt.ItemFlag.ItemIsSelectable
             i.setFlags(flags)
-            i.setCheckState(Qt.Checked)
+            i.setCheckState(Qt.CheckState.Checked)
         d.r = r = QCheckBox(_('Remove existing links to stylesheets'))
         r.setChecked(tprefs['remove_existing_links_when_linking_sheets'])
         l.addWidget(r)
-        d.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        d.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(d.accept), bb.rejected.connect(d.reject)
         l.addWidget(bb)
-        if d.exec_() == d.Accepted:
+        if d.exec_() == QDialog.DialogCode.Accepted:
             tprefs['remove_existing_links_when_linking_sheets'] = r.isChecked()
-            sheets = [unicode_type(s.item(il).text()) for il in range(s.count()) if s.item(il).checkState() == Qt.Checked]
+            sheets = [unicode_type(s.item(il).text()) for il in range(s.count()) if s.item(il).checkState() == Qt.CheckState.Checked]
             if sheets:
                 self.link_stylesheets_requested.emit(names, sheets, r.isChecked())
 
@@ -970,17 +997,17 @@ class NewFileDialog(QDialog):  # {{{
         self.err_label = la = QLabel('')
         la.setWordWrap(True)
         l.addWidget(la)
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         l.addWidget(bb)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        self.imp_button = b = bb.addButton(_('Import resource file (image/font/etc.)'), bb.ActionRole)
+        self.imp_button = b = bb.addButton(_('Import resource file (image/font/etc.)'), QDialogButtonBox.ButtonRole.ActionRole)
         b.setIcon(QIcon(I('view-image.png')))
         b.setToolTip(_('Import a file from your computer as a new'
                        ' file into the book.'))
         b.clicked.connect(self.import_file)
 
-        self.ok_button = bb.button(bb.Ok)
+        self.ok_button = bb.button(QDialogButtonBox.StandardButton.Ok)
 
         self.file_data = b''
         self.using_template = False
@@ -1053,7 +1080,7 @@ class MergeDialog(QDialog):  # {{{
         l.addWidget(la)
         self.sa = sa = QScrollArea(self)
         l.addWidget(sa)
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         l.addWidget(bb)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)

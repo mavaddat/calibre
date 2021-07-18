@@ -3,12 +3,12 @@
 __license__   = 'GPL v3'
 __copyright__ = '2008, Kovid Goyal <kovid at kovidgoyal.net>'
 
-from PyQt5.Qt import (
-    Qt, QDialog, QIcon, QListWidgetItem)
+from qt.core import (
+    Qt, QApplication, QDialog, QIcon, QListWidgetItem)
 
 from calibre.gui2.dialogs.tag_categories_ui import Ui_TagCategories
 from calibre.gui2.dialogs.confirm_delete import confirm
-from calibre.gui2 import error_dialog
+from calibre.gui2 import error_dialog, warning_dialog
 from calibre.constants import islinux
 from calibre.utils.icu import sort_key, strcmp, primary_contains
 from polyglot.builtins import iteritems, unicode_type
@@ -54,7 +54,7 @@ class TagCategories(QDialog, Ui_TagCategories):
 
         # Remove help icon on title bar
         icon = self.windowIcon()
-        self.setWindowFlags(self.windowFlags()&(~Qt.WindowContextHelpButtonHint))
+        self.setWindowFlags(self.windowFlags()&(~Qt.WindowType.WindowContextHelpButtonHint))
         self.setWindowIcon(icon)
 
         self.db = db
@@ -103,6 +103,7 @@ class TagCategories(QDialog, Ui_TagCategories):
             self.category_filter_box.addItem(v)
         self.current_cat_name = None
 
+        self.copy_category_name_to_clipboard.clicked.connect(self.copy_category_name_to_clipboard_clicked)
         self.apply_button.clicked.connect(self.apply_button_clicked)
         self.unapply_button.clicked.connect(self.unapply_button_clicked)
         self.add_category_button.clicked.connect(self.add_category)
@@ -127,6 +128,10 @@ class TagCategories(QDialog, Ui_TagCategories):
         if self.current_cat_name is None:
             self.category_box.setCurrentIndex(0)
             self.select_category(0)
+
+    def copy_category_name_to_clipboard_clicked(self):
+        t = self.category_box.itemText(self.category_box.currentIndex())
+        QApplication.clipboard().setText(t)
 
     def initialize_category_lists(self, book_ids):
         self.db_categories = self.db.new_api.get_categories(book_ids=book_ids)
@@ -169,7 +174,7 @@ class TagCategories(QDialog, Ui_TagCategories):
     def make_list_widget(self, item):
         n = item.name if item.exists else item.name + _(' (not on any book)')
         w = QListWidgetItem(item.icon, n)
-        w.setData(Qt.UserRole, item.index)
+        w.setData(Qt.ItemDataRole.UserRole, item.index)
         w.setToolTip(_('Category lookup name: ') + item.label)
         return w
 
@@ -196,8 +201,13 @@ class TagCategories(QDialog, Ui_TagCategories):
         if self.current_cat_name is None:
             return
         nodes = self.available_items_box.selectedItems() if node is None else [node]
+        if len(nodes) == 0:
+            warning_dialog(self, _('No items selected'),
+                           _('You must select items to apply'),
+                           show=True, show_copy_button=False)
+            return
         for node in nodes:
-            index = self.all_items[node.data(Qt.UserRole)].index
+            index = self.all_items[node.data(Qt.ItemDataRole.UserRole)].index
             if index not in self.applied_items:
                 self.applied_items.append(index)
         self.applied_items.sort(key=lambda x:sort_key(self.all_items[x].name))
@@ -208,8 +218,13 @@ class TagCategories(QDialog, Ui_TagCategories):
 
     def unapply_tags(self, node=None):
         nodes = self.applied_items_box.selectedItems() if node is None else [node]
+        if len(nodes) == 0:
+            warning_dialog(self, _('No items selected'),
+                           _('You must select items to unapply'),
+                           show=True, show_copy_button=False)
+            return
         for node in nodes:
-            index = self.all_items[node.data(Qt.UserRole)].index
+            index = self.all_items[node.data(Qt.ItemDataRole.UserRole)].index
             self.applied_items.remove(index)
         self.display_filtered_categories(None)
 
@@ -273,7 +288,7 @@ class TagCategories(QDialog, Ui_TagCategories):
 
     def del_category(self):
         if self.current_cat_name is not None:
-            if not confirm('<p>'+_('The current tag category will be '
+            if not confirm('<p>'+_('The current user category will be '
                            '<b>permanently deleted</b>. Are you sure?') +
                            '</p>', 'tag_category_delete', self):
                 return

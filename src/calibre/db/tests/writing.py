@@ -791,6 +791,7 @@ class WritingTest(BaseTest):
 
         cache.set_annotations_for_book(1, 'moo', annot_list)
         amap = cache.annotations_map_for_book(1, 'moo')
+        self.assertEqual(3, len(cache.all_annotations_for_book(1)))
         self.assertEqual([x[0] for x in annot_list], map_as_list(amap))
         self.assertFalse(cache.dirtied_cache)
         cache.check_dirtied_annotations()
@@ -804,8 +805,10 @@ class WritingTest(BaseTest):
         self.assertEqual([1, 3], [x['id'] for x in results])
         results = cache.search_annotations('"changed"', annotation_type='bookmark')
         self.assertEqual([1], [x['id'] for x in results])
-        results = cache.search_annotations('"Change"')
+        results = cache.search_annotations('"Changed"')  # changed and change stem differently in english and other euro languages
         self.assertEqual([1, 3], [x['id'] for x in results])
+        results = cache.search_annotations('"SOMe"')
+        self.assertEqual([3], [x['id'] for x in results])
         results = cache.search_annotations('"change"', use_stemming=False)
         self.assertFalse(results)
         results = cache.search_annotations('"bookmark1"', highlight_start='[', highlight_end=']')
@@ -813,6 +816,10 @@ class WritingTest(BaseTest):
         results = cache.search_annotations('"word"', highlight_start='[', highlight_end=']', snippet_size=3)
         self.assertEqual(results[0]['text'], '…some [word] changed…')
         self.assertRaises(FTSQueryError, cache.search_annotations, 'AND OR')
+        fts_l = [a(type='bookmark', title='路坎坷走来', seq=1),]
+        cache.set_annotations_for_book(1, 'moo', fts_l)
+        results = cache.search_annotations('路', highlight_start='[', highlight_end=']')
+        self.assertEqual(results[0]['text'], '[路]坎坷走来')
 
         annot_list[0][0]['title'] = 'changed title'
         cache.set_annotations_for_book(1, 'moo', annot_list)

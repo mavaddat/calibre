@@ -30,7 +30,34 @@ def renice(niceness):
         pass
 
 
-class Worker(object):
+def macos_edit_book_bundle_path():
+    base = os.path.dirname(sys.executables_location)
+    return os.path.join(base, 'ebook-viewer.app/Contents/ebook-edit.app/Contents/MacOS/')
+
+
+def exe_path(exe_name):
+    if hasattr(sys, 'running_from_setup'):
+        return [sys.executable, os.path.join(sys.setup_dir, 'run-calibre-worker.py')]
+    if getattr(sys, 'run_local', False):
+        return [sys.executable, sys.run_local, exe_name]
+    e = exe_name
+    if iswindows:
+        return os.path.join(os.path.dirname(sys.executable),
+                e+'.exe' if isfrozen else 'Scripts\\%s.exe'%e)
+    if ismacos:
+        return os.path.join(sys.executables_location, e)
+
+    if isfrozen:
+        return os.path.join(sys.executables_location, e)
+
+    if hasattr(sys, 'executables_location'):
+        c = os.path.join(sys.executables_location, e)
+        if os.access(c, os.X_OK):
+            return c
+    return e
+
+
+class Worker:
     '''
     Platform independent object for launching child processes. All processes
     have the environment variable :envvar:`CALIBRE_WORKER` set.
@@ -47,25 +74,7 @@ class Worker(object):
 
     @property
     def executable(self):
-        if hasattr(sys, 'running_from_setup'):
-            return [sys.executable, os.path.join(sys.setup_dir, 'run-calibre-worker.py')]
-        if getattr(sys, 'run_local', False):
-            return [sys.executable, sys.run_local, self.exe_name]
-        e = self.exe_name
-        if iswindows:
-            return os.path.join(os.path.dirname(sys.executable),
-                   e+'.exe' if isfrozen else 'Scripts\\%s.exe'%e)
-        if ismacos:
-            return os.path.join(sys.executables_location, e)
-
-        if isfrozen:
-            return os.path.join(sys.executables_location, e)
-
-        if hasattr(sys, 'executables_location'):
-            c = os.path.join(sys.executables_location, e)
-            if os.access(c, os.X_OK):
-                return c
-        return e
+        return exe_path(self.exe_name)
 
     @property
     def gui_executable(self):
@@ -74,8 +83,7 @@ class Worker(object):
                 base = os.path.dirname(sys.executables_location)
                 return os.path.join(base, 'ebook-viewer.app/Contents/MacOS/', self.exe_name)
             if self.job_name == 'ebook-edit':
-                base = os.path.dirname(sys.executables_location)
-                return os.path.join(base, 'ebook-viewer.app/Contents/ebook-edit.app/Contents/MacOS/', self.exe_name)
+                return os.path.join(macos_edit_book_bundle_path(), self.exe_name)
 
             return os.path.join(sys.executables_location, self.exe_name)
 
@@ -136,7 +144,7 @@ class Worker(object):
         self.job_name = job_name
         self._env = env.copy()
 
-    def __call__(self, redirect_output=True, cwd=None, priority=None):
+    def __call__(self, redirect_output=True, cwd=None, priority=None, pass_fds=()):
         '''
         If redirect_output is True, output from the child is redirected
         to a file on disk and this method returns the path to that file.
@@ -186,7 +194,20 @@ class Worker(object):
             args['stdout'] = windows_null_file
             args['stderr'] = subprocess.STDOUT
 
-        self.child = subprocess.Popen(cmd, **args)
+        args['close_fds'] = True
+        try:
+            if pass_fds:
+                if iswindows:
+                    for fd in pass_fds:
+                        os.set_handle_inheritable(fd, True)
+                    args['startupinfo'] = subprocess.STARTUPINFO(lpAttributeList={'handle_list':pass_fds})
+                else:
+                    args['pass_fds'] = pass_fds
+            self.child = subprocess.Popen(cmd, **args)
+        finally:
+            if iswindows and pass_fds:
+                for fd in pass_fds:
+                    os.set_handle_inheritable(fd, False)
         if 'stdin' in args:
             self.child.stdin.close()
 

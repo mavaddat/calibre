@@ -20,7 +20,7 @@ from calibre import browser as _browser, prints, random_user_agent
 from calibre.utils.monotonic import monotonic
 from calibre.utils.random_ua import accept_header_for_ua
 
-current_version = (1, 0, 4)
+current_version = (1, 0, 7)
 minimum_calibre_version = (2, 80, 0)
 
 
@@ -188,9 +188,7 @@ def bing_search(terms, site=None, br=None, log=prints, safe_search=False, dump_r
             log('Ignoring {!r} as it has no cached page'.format(title))
             continue
         d, w = div.get('u').split('|')[-2:]
-        # The bing cache does not have a valid https certificate currently
-        # (March 2017)
-        cached_url = 'http://cc.bingj.com/cache.aspx?q={q}&d={d}&mkt=en-US&setlang=en-US&w={w}'.format(
+        cached_url = 'https://cc.bingj.com/cache.aspx?q={q}&d={d}&mkt=en-US&setlang=en-US&w={w}'.format(
             q=q, d=d, w=w)
         ans.append(Result(a.get('href'), title, cached_url))
     if not ans:
@@ -235,13 +233,13 @@ def google_search(terms, site=None, br=None, log=prints, safe_search=False, dump
     ans = []
     for div in root.xpath('//*[@id="search"]//*[@id="rso"]//*[@class="g"]'):
         try:
-            a = div.xpath('descendant::div[@class="r"]/a[@href]')[0]
+            a = div.xpath('descendant::a[@href]')[0]
         except IndexError:
-            log('Ignoring div with no descendant')
+            log('Ignoring div with no main result link')
             continue
         title = tostring(a)
         try:
-            c = div.xpath('descendant::*[@role="menu"]//a[@class="fl"]')[0]
+            c = div.xpath('descendant::*[@role="menuitem"]//a[@class="fl"]')[0]
         except IndexError:
             log('Ignoring {!r} as it has no cached page'.format(title))
             continue

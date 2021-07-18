@@ -6,18 +6,20 @@ __license__   = 'GPL v3'
 __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
-import errno, os
-from functools import partial
+import errno
+import os
 from collections import Counter
-
-from PyQt5.Qt import QObject, QTimer, QModelIndex
+from functools import partial
+from qt.core import QDialog, QModelIndex, QObject, QTimer
 
 from calibre.constants import ismacos
-from calibre.gui2 import error_dialog, question_dialog
-from calibre.gui2.dialogs.delete_matching_from_device import DeleteMatchingFromDeviceDialog
+from calibre.gui2 import Aborted, error_dialog, question_dialog
+from calibre.gui2.actions import InterfaceAction
 from calibre.gui2.dialogs.confirm_delete import confirm
 from calibre.gui2.dialogs.confirm_delete_location import confirm_location
-from calibre.gui2.actions import InterfaceAction
+from calibre.gui2.dialogs.delete_matching_from_device import (
+    DeleteMatchingFromDeviceDialog
+)
 from calibre.utils.recycle_bin import can_recycle
 
 single_shot = partial(QTimer.singleShot, 10)
@@ -36,8 +38,10 @@ class MultiDeleter(QObject):  # {{{
                 _('You are trying to delete %d books. '
                     'Sending so many files to the Recycle'
                     ' Bin <b>can be slow</b>. Should calibre skip the'
-                    ' Recycle Bin? If you click Yes the files'
-                    ' will be <b>permanently deleted</b>.')%len(ids)):
+                    ' recycle bin? If you click Yes the files'
+                    ' will be <b>permanently deleted</b>.')%len(ids),
+                add_abort_button=True
+            ):
                 self.permanent = True
         self.gui = gui
         self.failures = []
@@ -123,7 +127,7 @@ class DeleteAction(InterfaceAction):
         self.delete_menu = self.qaction.menu()
         m = partial(self.create_menu_action, self.delete_menu)
         m('delete-specific',
-                _('Remove files of a specific format from selected books...'),
+                _('Remove files of a specific format from selected books'),
                 triggered=self.delete_selected_formats)
         m('delete-except',
                 _('Remove all formats from selected books, except...'),
@@ -158,7 +162,7 @@ class DeleteAction(InterfaceAction):
                     c[x] += 1
         d = SelectFormats(c, msg, parent=self.gui, exclude=exclude,
                 single=single)
-        if d.exec_() != d.Accepted:
+        if d.exec_() != QDialog.DialogCode.Accepted:
             return None
         return d.selected_formats
 
@@ -388,8 +392,11 @@ class DeleteAction(InterfaceAction):
                 raise
             self.library_ids_deleted2(to_delete_ids, next_id=next_id)
         else:
-            self.__md = MultiDeleter(self.gui, to_delete_ids,
-                    partial(self.library_ids_deleted2, next_id=next_id))
+            try:
+                self.__md = MultiDeleter(self.gui, to_delete_ids,
+                        partial(self.library_ids_deleted2, next_id=next_id))
+            except Aborted:
+                pass
 
     def delete_books(self, *args):
         '''

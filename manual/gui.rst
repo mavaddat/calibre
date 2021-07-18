@@ -45,9 +45,9 @@ Add books
 |adbi| The :guilabel:`Add books` action has seven variations accessed by doing a right-click on the button.
 
 
-    1. **Add books from a single directory**: Opens a file chooser dialog and allows you to specify which books in a directory should be added. This action is *context sensitive*, i.e. it depends on which :ref:`catalog <catalogs>` you have selected. If you have selected the :guilabel:`Library`, books will be added to the library. If you have selected the e-book reader device, the books will be uploaded to the device, and so on.
+    1. **Add books from a single folder**: Opens a file chooser dialog and allows you to specify which books in a folder should be added. This action is *context sensitive*, i.e. it depends on which :ref:`catalog <catalogs>` you have selected. If you have selected the :guilabel:`Library`, books will be added to the library. If you have selected the e-book reader device, the books will be uploaded to the device, and so on.
 
-    2. **Add books from directories and sub-directories**: Allows you to choose a directory. The directory and all its sub-directories are scanned recursively, and any e-books found are added to the library. You can choose whether to have calibre add all files present in a single directory to a single book record or multiple book records. calibre assumes that each directory contains a single book. All e-book files in a directory are assumed to be the same book in different formats. This action is the inverse of the :ref:`Save to disk <save_to_disk_multiple>` action, i.e. you can :guilabel:`Save to disk`, delete the books and re-add them in single book per directory mode, with no lost information except for the date (this assumes you have not changed any of the setting for the Save to disk action).
+    2. **Add books from folders and sub-folders**: Allows you to choose a folder. The folder and all its sub-folders are scanned recursively, and any e-books found are added to the library. You can choose whether to have calibre add all files present in a single folder to a single book record or multiple book records. calibre assumes that each folder contains a single book. All e-book files in a folder are assumed to be the same book in different formats. This action is the inverse of the :ref:`Save to disk <save_to_disk_multiple>` action, i.e. you can :guilabel:`Save to disk`, delete the books and re-add them in single book per folder mode, with no lost information except for the date (this assumes you have not changed any of the setting for the Save to disk action).
 
     3. **Add multiple books from archive (ZIP/RAR)**: Allows you to add multiple e-books that are stored inside the selected ZIP or RAR files. It is a convenient shortcut that avoids having to first unzip the archive and then add the books via one of the above two options.
 
@@ -121,7 +121,7 @@ View
     :class: float-right-img
 
 |vi| The :guilabel:`View` action displays the book in an e-book viewer program.
-calibre has a built-in viewer for many e-book formats.  For other formats it
+calibre has a built-in viewer for many e-book formats. For other formats it
 uses the default operating system application. You can configure which formats
 should open with the internal viewer via
 :guilabel:`Preferences->Interface->Behavior`. If a book has more than one
@@ -211,7 +211,7 @@ Save to disk
 
 .. _save_to_disk_multiple:
 
-    1. **Save to disk**: Saves the selected books to disk organized in directories. The directory structure looks like::
+    1. **Save to disk**: Saves the selected books to disk organized in folders. The folder structure looks like::
 
             Author_(sort)
                 Title
@@ -222,15 +222,15 @@ Save to disk
 
 .. _save_to_disk_single:
 
-    2. **Save to disk in a single directory**: Saves the selected books to disk in a single directory.
+    2. **Save to disk in a single folder**: Saves the selected books to disk in a single folder.
 
     For 1. and 2., all available formats, as well as metadata, are stored to disk for each selected book. Metadata is stored in an OPF file. Saved books can be re-imported to the library without any loss of information by using the :ref:`Add books <add_books>` action.
 
-    3. **Save only *<your preferred>* format to disk**: Saves the selected books to disk in the directory structure as shown in (1.) but only in your preferred e-book format. You can set your preferred format in :guilabel:`Preferences->Interface->Behaviour->Preferred output format`
+    3. **Save only *<your preferred>* format to disk**: Saves the selected books to disk in the folder structure as shown in (1.) but only in your preferred e-book format. You can set your preferred format in :guilabel:`Preferences->Interface->Behaviour->Preferred output format`
 
-    4. **Save only *<your preferred>* format to disk in a single directory**: Saves the selected books to disk in a single directory but only in your preferred e-book format. You can set your preferred format in :guilabel:`Preferences->Interface->Behaviour->Preferred output format`
+    4. **Save only *<your preferred>* format to disk in a single folder**: Saves the selected books to disk in a single folder but only in your preferred e-book format. You can set your preferred format in :guilabel:`Preferences->Interface->Behaviour->Preferred output format`
 
-    5. **Save single format to disk...**: Saves the selected books to disk in the directory structure as shown in (1.) but only in the format you select from the pop-out list.
+    5. **Save single format to disk...**: Saves the selected books to disk in the folder structure as shown in (1.) but only in the format you select from the popup list.
 
 .. _connect_share:
 
@@ -420,7 +420,7 @@ Searching for ``no`` or ``unchecked`` will find all books with ``No`` in the col
 
 Hierarchical items (e.g. A.B.C) use an extended syntax to match initial parts of the hierarchy. This is done by adding a period between the exact match indicator (=) and the text. For example, the query ``tags:=.A`` will find the tags `A` and `A.B`, but will not find the tags `AA` or `AA.B`. The query ``tags:=.A.B`` will find the tags `A.B` and `A.B.C`, but not the tag `A`.
 
-Identifiers (e.g., ISBN, doi, lccn etc) also use an extended syntax. First, note that an identifier has the form ``type:value``, as in ``isbn:123456789``. The extended syntax permits you to specify independently which type and value to search for. Both the type and the value parts of the query can use `equality`, `contains`, or `regular expression` matches. Examples:
+Identifiers (e.g., ISBN, DOI, LCCN, etc.) also use an extended syntax. First, note that an identifier has the form ``type:value``, as in ``isbn:123456789``. The extended syntax permits you to specify independently which type and value to search for. Both the type and the value parts of the query can use `equality`, `contains`, or `regular expression` matches. Examples:
 
     * ``identifiers:true`` will find books with any identifier.
     * ``identifiers:false`` will find books with no identifier.
@@ -495,7 +495,7 @@ be configured to read metadata from the file name instead, via
 :guilabel:`Preferences->Import/export->Adding books->Read metadata from file contents`.
 
 You can also control how metadata is read from the filename using regular
-expressions (see :doc:`regexp`).  In the :guilabel:`Adding Books` section of
+expressions (see :doc:`regexp`).  In the :guilabel:`Adding books` section of
 the configuration dialog, you can specify a regular expression that calibre
 will use to try and guess metadata from the names of e-book files that you add
 to the library. The default regular expression is::
@@ -529,8 +529,8 @@ page for the author.  This can be customized by right clicking on the author
 name and selecting Manage this author.
 
 Similarly, if you download metadata for the book, the Book details panel will
-automatically show you links pointing to the web pages for the book on amazon,
-worldcat, etc. from where the metadata was downloaded.
+automatically show you links pointing to the web pages for the book on Amazon,
+WorldCat, etc. from where the metadata was downloaded.
 
 You can right click on individual e-book formats in the Book details panel to
 delete them, compare them to their original versions, save them to disk, open
@@ -562,7 +562,7 @@ Tag browser
 
 The Tag browser allows you to easily browse your collection by Author/Tags/Series/etc. If you click on any item in the Tag browser, for example the author name Isaac Asimov, then the list of books to the right is restricted to showing books by that author. You can click on category names as well. For example, clicking on "Series" will show you all books in any series.
 
-The first click on an item will restrict the list of books to those that contain or match the item. Continuing the above example, clicking on Isaac Asimov will show books by that author. Clicking again on the item will change what is shown, depending on whether the item has children (see sub-categories and hierarchical items below). Continuing the Isaac Asimov example, clicking again on Isaac Asimov will restrict the list of books to those not by Isaac Asimov. A third click will remove the restriction, showing all books. If you hold down the Ctrl or Shift keys and click on multiple items, then restrictions based on multiple items are created. For example you could hold Ctrl and click on the tags History and Europe for finding books on European history. The Tag browser works by constructing search expressions that are automatically entered into the Search bar. Looking at what the Tag browser generates is a good way to learn how to construct basic search expressions.
+The first click on an item will restrict the list of books to those that contain or match the item. Continuing the above example, clicking on Isaac Asimov will show books by that author. Clicking again on the item will change what is shown, depending on whether the item has children (see sub-categories and hierarchical items below). Continuing the Isaac Asimov example, clicking again on Isaac Asimov will restrict the list of books to those not by Isaac Asimov. A third click will remove the restriction, showing all books. If you hold down the :kbd:`Ctrl` or :kbd:`Shift` keys and click on multiple items, then restrictions based on multiple items are created. For example you could hold :kbd:`Ctrl` and click on the tags History and Europe for finding books on European history. The Tag browser works by constructing search expressions that are automatically entered into the Search bar. Looking at what the Tag browser generates is a good way to learn how to construct basic search expressions.
 
 Items in the Tag browser have their icons partially colored. The amount of color depends on the average rating of the books in that category. So for example if the books by Isaac Asimov have an average of four stars, the icon for Isaac Asimov in the Tag browser will be 4/5th colored. You can hover your mouse over the icon to see the average rating.
 
@@ -578,7 +578,7 @@ It is also possible to create hierarchies inside some of the text categories suc
 
 Hierarchical items (items with children) use the same four 'click-on' searches as User categories. Items that do not have children use two of the searches: "everything matching" and "everything not matching".
 
-You can drag and drop items in the Tag browser onto User categories to add them to that category. If the source is a User category, holding the shift key while dragging will move the item to the new category. You can also drag and drop books from the book list onto items in the Tag browser; dropping a book on an item causes that item to be automatically applied to the dropped books. For example, dragging a book onto Isaac Asimov will set the author of that book to Isaac Asimov. Dropping it onto the tag History will add the tag History to the book's tags.
+You can drag and drop items in the Tag browser onto User categories to add them to that category. If the source is a User category, holding the :kbd:`Shift` key while dragging will move the item to the new category. You can also drag and drop books from the book list onto items in the Tag browser; dropping a book on an item causes that item to be automatically applied to the dropped books. For example, dragging a book onto Isaac Asimov will set the author of that book to Isaac Asimov. Dropping it onto the tag History will add the tag History to the book's tags.
 
 You can easily find any item in the Tag browser by clicking the search button at the lower-right corner. In addition, you can right click on any item and choose one of several operations. Some examples are to hide it, rename it, or open a "Manage x" dialog that allows you to manage items of that kind. For example, the "Manage Authors" dialog allows you to rename authors and control how their names are sorted.
 
@@ -618,7 +618,7 @@ browser` you can change the number of covers displayed, and even have the
 Quickview
 ----------
 
-Sometimes you want to select a book and quickly get a list of books with the same value in some category (authors, tags, publisher, series, etc.) as the currently selected book, but without changing the current view of the library. You can do this with Quickview. Quickview opens either a second window or a panel in the book list showing the list of books matching the value of interest. For example, assume you want to see a list of all the books with the one or more of the authors of the currently-selected book. Click in the author cell you are interested in and press the 'Q' key or click the Quickview icon in the Layout section of the calibre window. A window or panel will open with all the authors for that book on the left, and all the books by the selected author on the right.
+Sometimes you want to select a book and quickly get a list of books with the same value in some category (authors, tags, publisher, series, etc.) as the currently selected book, but without changing the current view of the library. You can do this with Quickview. Quickview opens either a second window or a panel in the book list showing the list of books matching the value of interest. For example, assume you want to see a list of all the books with the one or more of the authors of the currently-selected book. Click in the author cell you are interested in and press the 'Q' key or click the :guilabel:`Quickview` icon in the :guilabel:`Layout` section of the calibre window. A window or panel will open with all the authors for that book on the left, and all the books by the selected author on the right.
 
 Some example Quickview usages: quickly seeing what other books:
 	- have some tag(s) applied to the currently selected book,
@@ -638,7 +638,7 @@ The Quickview panel can be left open permanently, in which case it follows movem
 
 Double-click on a book in the Quickview window to select that book in the library view. This will also change the items display in the QuickView window (the left-hand panel) to show the items in the newly-selected book.
 
-``Shift-`` or ``Ctrl-`` double-click on a book in the Quickview window to open the edit metadata dialog on that book in the calibre window. The edited book will be Quickview'ed when you close the edit metadata dialog.
+:kbd:`Shift-` or :kbd:`Ctrl-` double-click on a book in the Quickview window to open the edit metadata dialog on that book in the calibre window. The edited book will be Quickview'ed when you close the edit metadata dialog.
 
 You can see if a column can be Quickview'ed by hovering your mouse over the column heading and looking at the tooltip for that heading. You can also know by right-clicking on the column heading to see of the "Quickview" option is shown in the menu, in which case choosing that Quickview option is equivalent to pressing 'Q' in the current cell.
 
@@ -741,7 +741,7 @@ calibre has several keyboard shortcuts to save you time and mouse movement. Thes
     * - :kbd:`/, Ctrl+F`
       - Focus the Search bar
     * - :kbd:`Shift+Ctrl+F`
-      - Open the advanced search dialog
+      - Open the Advanced search dialog
     * - :kbd:`Shift+Alt+F`
       - Toggle the Search bar
     * - :kbd:`Esc`
@@ -782,3 +782,5 @@ calibre has several keyboard shortcuts to save you time and mouse movement. Thes
       - Re-apply the current sort
     * - :kbd:`Ctrl+Q`
       - Quit calibre
+    * - :kbd:`X`
+      - Toggle auto scroll of the book list

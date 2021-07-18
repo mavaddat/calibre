@@ -3,20 +3,21 @@
 from __python__ import bound_methods, hash_literals
 
 from elementmaker import E
-from gettext import gettext as _
-from uuid import short_uuid
 
 from book_list.globals import get_session_data
 from book_list.theme import get_color
 from dom import change_icon_image, clear, svgicon, unique_id
-from modals import error_dialog, question_dialog, create_custom_dialog
+from gettext import gettext as _
+from modals import create_custom_dialog, error_dialog, question_dialog
 from read_book.globals import runtime, ui_operations
 from read_book.highlights import (
-    ICON_SIZE, EditNotesAndColors, HighlightStyle, all_styles, render_notes
+    ICON_SIZE, EditNotesAndColors, HighlightStyle, all_styles,
+    get_current_link_prefix, link_to_epubcfi, render_notes
 )
-from widgets import create_button
 from read_book.shortcuts import shortcut_for_key_event
-from read_book.toc import get_toc_nodes_bordering_spine_item, family_for_toc_node
+from read_book.toc import family_for_toc_node, get_toc_nodes_bordering_spine_item
+from uuid import short_uuid
+from widgets import create_button
 
 DRAG_SCROLL_ZONE_MIN_HEIGHT = 10
 BUTTON_MARGIN = '0.5rem'
@@ -183,15 +184,17 @@ def all_actions():
 
     if not all_actions.ans:
         all_actions.ans = {
-            'copy': a('copy', _('Copy to clipboard'), 'copy_to_clipboard'),
-            'lookup': a('library', _('Lookup/search selected word'), 'lookup'),
-            'quick_highlight': a('highlight', _('Quick highlight in current style'), 'quick_highlight'),
-            'highlight': a('highlight', _('Highlight selection'), 'create_highlight'),
-            'search': a('search', _('Search for selection in the book'), 'book_search'),
-            'bookmark': a('bookmark', _('Create a bookmark'), 'new_bookmark'),
-            'search_net': a('global-search', _('Search for selection on the net'), 'internet_search'),
-            'remove_highlight': a('trash', _('Remove this highlight'), 'remove_highlight', True),
-            'clear': a('close', _('Clear selection'), 'clear_selection'),
+            'copy': a('copy', _('Copy to clipboard') + ' [Ctrl+C]', 'copy_to_clipboard'),
+            'lookup': a('library', _('Lookup/search selected word') + ' [L]', 'lookup'),
+            'quick_highlight': a('highlight', _('Quick highlight in current style') + ' [Q]', 'quick_highlight'),
+            'highlight': a('highlight', _('Highlight selection') + ' [H]', 'create_highlight'),
+            'search': a('search', _('Search for selection in the book') + ' [F]', 'book_search'),
+            'bookmark': a('bookmark', _('Create a bookmark') + ' [Ctrl+Alt+B]', 'new_bookmark'),
+            'search_net': a('global-search', _('Search for selection on the net') + ' [S]', 'internet_search'),
+            'remove_highlight': a('trash', _('Remove this highlight') + ' [Delete]', 'remove_highlight', True),
+            'clear': a('close', _('Clear selection') + ' [Esc]', 'clear_selection'),
+            'speak': a('bullhorn', _('Read aloud') + ' [T]', 'speak_aloud'),
+            'cite': a('reference-mode', _('Copy citation to clipboard') + ' [X]', 'cite'),
         }
         qh = all_actions.ans.quick_highlight
         qh.icon_function = quick_highlight_icon.bind(None, qh.icon, qh.text)
@@ -242,6 +245,7 @@ class SelectionBar:
         container = self.container
         container.style.overflow = 'hidden'
         container.addEventListener('click', self.container_clicked, {'passive': False})
+        container.addEventListener('contextmenu', self.container_context_menu_requested, {'passive': False})
         container.addEventListener('mouseup', self.mouseup_on_container, {'passive': False})
         container.addEventListener('mousemove', self.mousemove_on_container, {'passive': False})
         container.addEventListener('touchmove', self.touchmove_on_container, {'passive': False})
@@ -276,6 +280,7 @@ class SelectionBar:
         editor_div = E.div(id=self.editor_id, style='position: absolute')
         container.appendChild(editor_div)
         editor_div.addEventListener('click', self.editor_container_clicked, {'passive': False})
+        editor_div.addEventListener('wheel', def(ev):ev.stopPropagation();, {'passive': True})
 
     # bar and handles markup {{{
 
@@ -292,7 +297,7 @@ class SelectionBar:
         bar_container.style.maxWidth = 'min(50rem, 90vw)' if self.supports_css_min_max else '50rem'
         bar_container.style.backgroundColor = get_color("window-background")
         notes_container = E.div()
-        notes_container.addEventListener('wheel', def(evt): evt.stopPropagation();, {'passive': True})
+        notes_container.addEventListener('wheel', def(evt): evt.stopPropagation();, {'passive': False})
         for x in [
             E.div(style='height: 4ex; display: flex; align-items: center; padding: 5px; justify-content: center'),
 
@@ -361,7 +366,7 @@ class SelectionBar:
             c.style.maxHeight = 'min(20ex, 40vh)'
         else:
             c.style.maxHeight = '20ex'
-        render_notes(notes, c)
+        render_notes(notes, c, True)
     # }}}
 
     # accessors {{{
@@ -471,12 +476,22 @@ class SelectionBar:
         self.position_in_handle.x = Math.round(ev.clientX - r.left)
         self.position_in_handle.y = Math.round(ev.clientY - r.top)
 
+    def container_context_menu_requested(self, ev):
+        pos = {'x': ev.clientX, 'y': ev.clientY}
+        map_to_iframe_coords(pos, get_margins())
+        self.send_message('extend-to-point', pos=pos)
+
     def container_clicked(self, ev):
         ev.stopPropagation(), ev.preventDefault()
         if self.state is EDITING:
             self.hide_editor(True)
         if self.state is WAITING:
             now = window.performance.now()
+            if ev.shiftKey:
+                pos = {'x': ev.clientX, 'y': ev.clientY}
+                map_to_iframe_coords(pos, get_margins())
+                self.send_message('extend-to-point', pos=pos)
+                return
             if self.last_double_click_at and now - self.last_double_click_at < 500:
                 self.send_message('extend-to-paragraph')
                 return
@@ -551,31 +566,66 @@ class SelectionBar:
 
     def on_wheel(self, ev):
         ev.stopPropagation(), ev.preventDefault()
-        self.view.send_wheel_event_to_iframe(ev, 'selection-mode')
+        if self.state is not EDITING:
+            self.view.send_wheel_event_to_iframe(ev, 'selection-mode')
 
     def on_keydown(self, ev):
         ev.stopPropagation(), ev.preventDefault()
         if ev.key is 'Escape':
-            self.clear_selection()
+            if self.state is EDITING:
+                self.hide_editor()
+            else:
+                self.clear_selection()
             return
-        if ev.key and ev.key.toLowerCase() is 'c' and ev.ctrlKey:
-            self.copy_to_clipboard()
-            return
+        if self.state is WAITING and not ev.ctrlKey and not ev.altKey and not ev.metaKey:
+            k = ev.key.toLowerCase()
+            if k is 'l':
+                self.lookup()
+                return
+            if k is 'q':
+                self.quick_highlight()
+                return
+            if k is 'h':
+                self.create_highlight()
+                return
+            if k is 'f':
+                self.book_search()
+                return
+            if k is 's':
+                self.internet_search()
+                return
+            if k is 't':
+                self.speak_aloud()
+                return
+            if k is 'x':
+                self.cite()
+                return
+            if k is 'delete':
+                self.remove_highlight()
+                return
         sc_name = shortcut_for_key_event(ev, self.view.keyboard_shortcut_map)
         if not sc_name:
             return
-        forwarded = {'toggle_highlights': True, 'extend_selection_by_word': True, 'shrink_selection_by_word': True}
+        forwarded = {
+            'toggle_highlights': True,
+            'edit_book': True,
+            'select_all': True,
+            'extend_selection_to_end_of_line': True,
+            'extend_selection_to_start_of_line': True,
+        }
         if sc_name is 'show_chrome':
             self.clear_selection()
         elif sc_name is 'copy_to_clipboard':
             self.copy_to_clipboard()
+        elif sc_name is 'toggle_lookup':
+            self.lookup()
         elif sc_name in ('up', 'down', 'pageup', 'pagedown', 'left', 'right'):
             self.send_message('trigger-shortcut', name=sc_name)
         elif sc_name is 'start_search':
             self.book_search()
         elif sc_name is 'new_bookmark':
             self.new_bookmark()
-        elif forwarded[sc_name]:
+        elif sc_name.startsWith('shrink_selection_by_') or sc_name.startsWith('extend_selection_by_') or forwarded[sc_name]:
             self.view.on_handle_shortcut({'name': sc_name})
 
     def report_failed_edit_highlight(self, annot_id):
@@ -649,9 +699,13 @@ class SelectionBar:
 
     # show and hide {{{
     def hide(self):
+        was_shown = self.state is not HIDDEN
         self.state = HIDDEN
         self.container.style.display = 'none'
         self.view.focus_iframe()
+        if not was_shown and self.spoken_aloud_at_least_once:
+            ui_operations.speak_simple_text('')  # cancel any on-going speech
+            self.spoken_aloud_at_least_once = False
 
     def show(self):
         sd = get_session_data()
@@ -744,7 +798,7 @@ class SelectionBar:
             has_space_below = end.y + end.height < container.offsetHeight - bar_height - buffer
             put_below = has_space_below
         else:
-            has_space_above = end.y + bar_height - buffer > 0
+            has_space_above = end.y - bar_height - buffer > 0
             put_below = not has_space_above
         top = place_vertically(end.y + end.height if put_below else end.y, put_below)
 
@@ -950,6 +1004,15 @@ class SelectionBar:
         self.view.on_handle_shortcut({'name': 'clear_selection'})
         self.hide()
 
+    def speak_aloud(self):
+        text = self.view.currently_showing.selection.text
+        if text:
+            ui_operations.speak_simple_text(text)
+            self.spoken_aloud_at_least_once = True
+
+    def cite(self):
+        self.send_message('cite-current-selection')
+
     def create_highlight(self):
         cs = self.view.currently_showing.selection
         hs = self.current_highlight_style
@@ -967,12 +1030,16 @@ class SelectionBar:
         cs = self.view.currently_showing.selection
         if cs.text:
             if cs.annot_id:
-                self.create_highlight()
+                am = self.annotations_manager
+                self.current_notes = am.notes_for_highlight(cs.annot_id) or ''
+                self.send_message(
+                    'apply-highlight', style=self.current_highlight_style.style, uuid=short_uuid(), existing=cs.annot_id, has_notes=v'!!self.current_notes'
+        )
             else:
                 self.current_notes = ''
                 self.send_message('apply-highlight', style=self.current_highlight_style.style, uuid=short_uuid(), has_notes=False)
-                self.state = WAITING
-                self.update_position()
+            self.state = WAITING
+            self.update_position()
 
     def quick_highlight_with_style(self, hs):
         self.current_highlight_style = hs
@@ -1031,6 +1098,16 @@ class SelectionBar:
             self.report_failed_edit_highlight(msg.uuid)
         elif msg.type is 'double-click':
             self.last_double_click_at = window.performance.now()
+        elif msg.type is 'cite-data':
+            spine_index = self.view.currently_showing.spine_index
+            spine_index = (1 + spine_index) * 2
+            cfi = msg.bounds.start
+            link_prefix = get_current_link_prefix()
+            if not link_prefix:
+                return self.view.show_not_a_library_book_error()
+            url = link_to_epubcfi(f'epubcfi(/{spine_index}{cfi})', link_prefix)
+            text = msg.highlighted_text.replace(/\[/g, r'\[').replace(/\]/g, r'\]')
+            ui_operations.copy_selection(f'[{text}]({url})')
         else:
             print('Ignoring annotations message with unknown type:', msg.type)
 

@@ -5,13 +5,15 @@
 
 import os
 import sys
+import tempfile
 import textwrap
 from functools import partial
-from PyQt5.Qt import (
-    QApplication, QCheckBox, QCursor, QDialog, QDialogButtonBox, QFrame, QGridLayout,
-    QIcon, QInputDialog, QItemSelectionModel, QKeySequence, QLabel, QMenu,
-    QPushButton, QScrollArea, QSize, QSizePolicy, QStackedWidget, Qt,
-    QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, pyqtSignal
+from qt.core import (
+    QAbstractItemView, QApplication, QCheckBox, QCursor, QDialog, QDialogButtonBox,
+    QEvent, QFrame, QGridLayout, QIcon, QInputDialog, QItemSelectionModel,
+    QKeySequence, QLabel, QMenu, QPushButton, QScrollArea, QSize, QSizePolicy,
+    QStackedWidget, Qt, QToolButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+    QWidget, pyqtSignal
 )
 from threading import Thread
 
@@ -21,13 +23,14 @@ from calibre.ebooks.oeb.polish.toc import (
     TOC, add_id, commit_toc, from_files, from_links, from_xpaths, get_toc
 )
 from calibre.gui2 import (
-    Application, error_dialog, gprefs, info_dialog, question_dialog, set_app_uid
+    Application, error_dialog, info_dialog, question_dialog, set_app_uid
 )
 from calibre.gui2.convert.xpath_wizard import XPathEdit
 from calibre.gui2.progress_indicator import ProgressIndicator
 from calibre.gui2.toc.location import ItemEdit
 from calibre.ptempfile import reset_base_dir
-from calibre.utils.lock import ExclusiveFile
+from calibre.utils.config import JSONConfig
+from calibre.utils.filenames import atomic_rename
 from calibre.utils.logging import GUILog
 from polyglot.builtins import map, range, unicode_type
 
@@ -56,12 +59,12 @@ class XPathDialog(QDialog):  # {{{
             self.widgets.append(xp)
             l.addWidget(xp)
 
-        self.bb = bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        self.bb = bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        self.ssb = b = bb.addButton(_('&Save settings'), bb.ActionRole)
+        self.ssb = b = bb.addButton(_('&Save settings'), QDialogButtonBox.ButtonRole.ActionRole)
         b.clicked.connect(self.save_settings)
-        self.load_button = b = bb.addButton(_('&Load settings'), bb.ActionRole)
+        self.load_button = b = bb.addButton(_('&Load settings'), QDialogButtonBox.ButtonRole.ActionRole)
         self.load_menu = QMenu(b)
         b.setMenu(self.load_menu)
         self.setup_load_button()
@@ -247,7 +250,7 @@ class ItemView(QStackedWidget):  # {{{
 
         # Item status
         ip.hl1 = hl =  QFrame()
-        hl.setFrameShape(hl.HLine)
+        hl.setFrameShape(QFrame.Shape.HLine)
         l.addWidget(hl, l.rowCount(), 0, 1, 2)
         self.icon_label = QLabel()
         self.status_label = QLabel()
@@ -255,7 +258,7 @@ class ItemView(QStackedWidget):  # {{{
         l.addWidget(self.icon_label, l.rowCount(), 0)
         l.addWidget(self.status_label, l.rowCount()-1, 1)
         ip.hl2 = hl =  QFrame()
-        hl.setFrameShape(hl.HLine)
+        hl.setFrameShape(QFrame.Shape.HLine)
         l.addWidget(hl, l.rowCount(), 0, 1, 2)
 
         # Edit/remove item
@@ -269,7 +272,7 @@ class ItemView(QStackedWidget):  # {{{
         l.addWidget(b, l.rowCount(), 0, 1, 2)
         b.clicked.connect(self.delete_item)
         ip.hl3 = hl =  QFrame()
-        hl.setFrameShape(hl.HLine)
+        hl.setFrameShape(QFrame.Shape.HLine)
         l.addWidget(hl, l.rowCount(), 0, 1, 2)
         l.setRowMinimumHeight(rs, 20)
 
@@ -292,7 +295,7 @@ class ItemView(QStackedWidget):  # {{{
         l.addWidget(b, l.rowCount()+1, 0, 1, 2)
 
         ip.hl4 = hl =  QFrame()
-        hl.setFrameShape(hl.HLine)
+        hl.setFrameShape(QFrame.Shape.HLine)
         l.addWidget(hl, l.rowCount(), 0, 1, 2)
         l.setRowMinimumHeight(rs, 20)
 
@@ -327,7 +330,7 @@ class ItemView(QStackedWidget):  # {{{
 
     def create_from_user_xpath(self):
         d = XPathDialog(self, self.prefs)
-        if d.exec_() == d.Accepted and d.xpaths:
+        if d.exec_() == QDialog.DialogCode.Accepted and d.xpaths:
             self.create_from_xpath.emit(d.xpaths, d.remove_duplicates_cb.isChecked())
 
     def hide_azw3_warning(self):
@@ -353,12 +356,12 @@ class ItemView(QStackedWidget):  # {{{
 
     def populate_item_pane(self):
         item = self.current_item
-        name = unicode_type(item.data(0, Qt.DisplayRole) or '')
+        name = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
         self.item_pane.heading.setText('<h2>%s</h2>'%name)
-        self.icon_label.setPixmap(item.data(0, Qt.DecorationRole
+        self.icon_label.setPixmap(item.data(0, Qt.ItemDataRole.DecorationRole
                                             ).pixmap(32, 32))
         tt = _('This entry points to an existing destination')
-        toc = item.data(0, Qt.UserRole)
+        toc = item.data(0, Qt.ItemDataRole.UserRole)
         if toc.dest_exists is False:
             tt = _('The location this entry points to does not exist')
         elif toc.dest_exists is None:
@@ -372,7 +375,7 @@ class ItemView(QStackedWidget):  # {{{
 # }}}
 
 
-NODE_FLAGS = (Qt.ItemIsDragEnabled|Qt.ItemIsEditable|Qt.ItemIsEnabled|Qt.ItemIsSelectable|Qt.ItemIsDropEnabled)
+NODE_FLAGS = (Qt.ItemFlag.ItemIsDragEnabled|Qt.ItemFlag.ItemIsEditable|Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable|Qt.ItemFlag.ItemIsDropEnabled)
 
 
 class TreeWidget(QTreeWidget):  # {{{
@@ -386,19 +389,19 @@ class TreeWidget(QTreeWidget):  # {{{
         self.setHeaderLabel(_('Table of Contents'))
         self.setIconSize(QSize(ICON_SIZE, ICON_SIZE))
         self.setDragEnabled(True)
-        self.setSelectionMode(self.ExtendedSelection)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.viewport().setAcceptDrops(True)
         self.setDropIndicatorShown(True)
-        self.setDragDropMode(self.InternalMove)
+        self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setAutoScroll(True)
         self.setAutoScrollMargin(ICON_SIZE*2)
-        self.setDefaultDropAction(Qt.MoveAction)
+        self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setAutoExpandDelay(1000)
         self.setAnimated(True)
         self.setMouseTracking(True)
         self.in_drop_event = False
         self.root = self.invisibleRootItem()
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.show_context_menu)
 
     def push_history(self):
@@ -424,7 +427,7 @@ class TreeWidget(QTreeWidget):  # {{{
                 yield gc
 
     def update_status_tip(self, item):
-        c = item.data(0, Qt.UserRole)
+        c = item.data(0, Qt.ItemDataRole.UserRole)
         if c is not None:
             frag = c.frag or ''
             if frag:
@@ -436,10 +439,10 @@ class TreeWidget(QTreeWidget):  # {{{
 
         def serialize_node(node):
             return {
-                'title': node.data(0, Qt.DisplayRole),
-                'toc_node': node.data(0, Qt.UserRole),
-                'icon': node.data(0, Qt.DecorationRole),
-                'tooltip': node.data(0, Qt.ToolTipRole),
+                'title': node.data(0, Qt.ItemDataRole.DisplayRole),
+                'toc_node': node.data(0, Qt.ItemDataRole.UserRole),
+                'icon': node.data(0, Qt.ItemDataRole.DecorationRole),
+                'tooltip': node.data(0, Qt.ItemDataRole.ToolTipRole),
                 'is_selected': node.isSelected(),
                 'is_expanded': node.isExpanded(),
                 'children': list(map(serialize_node, (node.child(i) for i in range(node.childCount())))),
@@ -452,11 +455,11 @@ class TreeWidget(QTreeWidget):  # {{{
 
         def unserialize_node(dict_node, parent):
             n = QTreeWidgetItem(parent)
-            n.setData(0, Qt.DisplayRole, dict_node['title'])
-            n.setData(0, Qt.UserRole, dict_node['toc_node'])
+            n.setData(0, Qt.ItemDataRole.DisplayRole, dict_node['title'])
+            n.setData(0, Qt.ItemDataRole.UserRole, dict_node['toc_node'])
             n.setFlags(NODE_FLAGS)
-            n.setData(0, Qt.DecorationRole, dict_node['icon'])
-            n.setData(0, Qt.ToolTipRole, dict_node['tooltip'])
+            n.setData(0, Qt.ItemDataRole.DecorationRole, dict_node['icon'])
+            n.setData(0, Qt.ItemDataRole.ToolTipRole, dict_node['tooltip'])
             self.update_status_tip(n)
             n.setExpanded(dict_node['is_expanded'])
             n.setSelected(dict_node['is_selected'])
@@ -487,7 +490,7 @@ class TreeWidget(QTreeWidget):  # {{{
         return ans
 
     def highlight_item(self, item):
-        self.setCurrentItem(item, 0, QItemSelectionModel.ClearAndSelect)
+        self.setCurrentItem(item, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.scrollToItem(item)
 
     def check_multi_selection(self):
@@ -597,34 +600,34 @@ class TreeWidget(QTreeWidget):  # {{{
         self.push_history()
         from calibre.utils.titlecase import titlecase
         for item in self.selectedItems():
-            t = unicode_type(item.data(0, Qt.DisplayRole) or '')
-            item.setData(0, Qt.DisplayRole, titlecase(t))
+            t = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
+            item.setData(0, Qt.ItemDataRole.DisplayRole, titlecase(t))
 
     def upper_case(self):
         self.push_history()
         for item in self.selectedItems():
-            t = unicode_type(item.data(0, Qt.DisplayRole) or '')
-            item.setData(0, Qt.DisplayRole, icu_upper(t))
+            t = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
+            item.setData(0, Qt.ItemDataRole.DisplayRole, icu_upper(t))
 
     def lower_case(self):
         self.push_history()
         for item in self.selectedItems():
-            t = unicode_type(item.data(0, Qt.DisplayRole) or '')
-            item.setData(0, Qt.DisplayRole, icu_lower(t))
+            t = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
+            item.setData(0, Qt.ItemDataRole.DisplayRole, icu_lower(t))
 
     def swap_case(self):
         self.push_history()
         from calibre.utils.icu import swapcase
         for item in self.selectedItems():
-            t = unicode_type(item.data(0, Qt.DisplayRole) or '')
-            item.setData(0, Qt.DisplayRole, swapcase(t))
+            t = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
+            item.setData(0, Qt.ItemDataRole.DisplayRole, swapcase(t))
 
     def capitalize(self):
         self.push_history()
         from calibre.utils.icu import capitalize
         for item in self.selectedItems():
-            t = unicode_type(item.data(0, Qt.DisplayRole) or '')
-            item.setData(0, Qt.DisplayRole, capitalize(t))
+            t = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
+            item.setData(0, Qt.ItemDataRole.DisplayRole, capitalize(t))
 
     def bulk_rename(self):
         from calibre.gui2.tweak_book.file_list import get_bulk_rename_settings
@@ -636,22 +639,22 @@ class TreeWidget(QTreeWidget):  # {{{
         if fmt is not None and num is not None:
             self.push_history()
             for i, item in enumerate(items):
-                item.setData(0, Qt.DisplayRole, fmt % (num + i))
+                item.setData(0, Qt.ItemDataRole.DisplayRole, fmt % (num + i))
 
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Left and ev.modifiers() & Qt.CTRL:
+        if ev.key() == Qt.Key.Key_Left and ev.modifiers() & Qt.Modifier.CTRL:
             self.move_left()
             ev.accept()
-        elif ev.key() == Qt.Key_Right and ev.modifiers() & Qt.CTRL:
+        elif ev.key() == Qt.Key.Key_Right and ev.modifiers() & Qt.Modifier.CTRL:
             self.move_right()
             ev.accept()
-        elif ev.key() == Qt.Key_Up and (ev.modifiers() & Qt.CTRL or ev.modifiers() & Qt.ALT):
+        elif ev.key() == Qt.Key.Key_Up and (ev.modifiers() & Qt.Modifier.CTRL or ev.modifiers() & Qt.Modifier.ALT):
             self.move_up()
             ev.accept()
-        elif ev.key() == Qt.Key_Down and (ev.modifiers() & Qt.CTRL or ev.modifiers() & Qt.ALT):
+        elif ev.key() == Qt.Key.Key_Down and (ev.modifiers() & Qt.Modifier.CTRL or ev.modifiers() & Qt.Modifier.ALT):
             self.move_down()
             ev.accept()
-        elif ev.key() in (Qt.Key_Delete, Qt.Key_Backspace):
+        elif ev.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self.del_items()
             ev.accept()
         else:
@@ -661,7 +664,7 @@ class TreeWidget(QTreeWidget):  # {{{
         item = self.currentItem()
 
         def key(k):
-            sc = unicode_type(QKeySequence(k | Qt.CTRL).toString(QKeySequence.NativeText))
+            sc = unicode_type(QKeySequence(k | Qt.Modifier.CTRL).toString(QKeySequence.SequenceFormat.NativeText))
             return ' [%s]'%sc
 
         if item is not None:
@@ -670,17 +673,17 @@ class TreeWidget(QTreeWidget):  # {{{
             m.addAction(QIcon(I('modified.png')), _('Bulk rename all selected items'), self.bulk_rename)
             m.addAction(QIcon(I('trash.png')), _('Remove all selected items'), self.del_items)
             m.addSeparator()
-            ci = unicode_type(item.data(0, Qt.DisplayRole) or '')
+            ci = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
             p = item.parent() or self.invisibleRootItem()
             idx = p.indexOfChild(item)
             if idx > 0:
-                m.addAction(QIcon(I('arrow-up.png')), (_('Move "%s" up')%ci)+key(Qt.Key_Up), self.move_up)
+                m.addAction(QIcon(I('arrow-up.png')), (_('Move "%s" up')%ci)+key(Qt.Key.Key_Up), self.move_up)
             if idx + 1 < p.childCount():
-                m.addAction(QIcon(I('arrow-down.png')), (_('Move "%s" down')%ci)+key(Qt.Key_Down), self.move_down)
+                m.addAction(QIcon(I('arrow-down.png')), (_('Move "%s" down')%ci)+key(Qt.Key.Key_Down), self.move_down)
             if item.parent() is not None:
-                m.addAction(QIcon(I('back.png')), (_('Unindent "%s"')%ci)+key(Qt.Key_Left), self.move_left)
+                m.addAction(QIcon(I('back.png')), (_('Unindent "%s"')%ci)+key(Qt.Key.Key_Left), self.move_left)
             if idx > 0:
-                m.addAction(QIcon(I('forward.png')), (_('Indent "%s"')%ci)+key(Qt.Key_Right), self.move_right)
+                m.addAction(QIcon(I('forward.png')), (_('Indent "%s"')%ci)+key(Qt.Key.Key_Right), self.move_right)
 
             m.addSeparator()
             case_menu = QMenu(_('Change case'), m)
@@ -751,7 +754,7 @@ class TOCView(QWidget):  # {{{
         l.addWidget(b, col, 1)
         self.default_msg = _('Double click on an entry to change the text')
         self.hl = hl = QLabel(self.default_msg)
-        hl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        hl.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         l.addWidget(hl, col, 2, 1, -1)
         self.item_view = i = ItemView(self, self.prefs)
         self.item_view.delete_item.connect(self.delete_current_item)
@@ -770,13 +773,13 @@ class TOCView(QWidget):  # {{{
         self.item_view.edit_item()
 
     def event(self, e):
-        if e.type() == e.StatusTip:
+        if e.type() == QEvent.Type.StatusTip:
             txt = unicode_type(e.tip()) or self.default_msg
             self.hl.setText(txt)
         return super(TOCView, self).event(e)
 
     def item_title(self, item):
-        return unicode_type(item.data(0, Qt.DisplayRole) or '')
+        return unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '')
 
     def del_items(self):
         self.tocw.del_items()
@@ -831,8 +834,8 @@ class TOCView(QWidget):  # {{{
     def data_changed(self, top_left, bottom_right):
         for r in range(top_left.row(), bottom_right.row()+1):
             idx = self.tocw.model().index(r, 0, top_left.parent())
-            new_title = unicode_type(idx.data(Qt.DisplayRole) or '').strip()
-            toc = idx.data(Qt.UserRole)
+            new_title = unicode_type(idx.data(Qt.ItemDataRole.DisplayRole) or '').strip()
+            toc = idx.data(Qt.ItemDataRole.UserRole)
             if toc is not None:
                 toc.title = new_title or _('(Untitled)')
             item = self.tocw.itemFromIndex(idx)
@@ -849,16 +852,16 @@ class TOCView(QWidget):  # {{{
         return c
 
     def populate_item(self, c, child):
-        c.setData(0, Qt.DisplayRole, child.title or _('(Untitled)'))
-        c.setData(0, Qt.UserRole, child)
+        c.setData(0, Qt.ItemDataRole.DisplayRole, child.title or _('(Untitled)'))
+        c.setData(0, Qt.ItemDataRole.UserRole, child)
         c.setFlags(NODE_FLAGS)
-        c.setData(0, Qt.DecorationRole, self.icon_map[child.dest_exists])
+        c.setData(0, Qt.ItemDataRole.DecorationRole, self.icon_map[child.dest_exists])
         if child.dest_exists is False:
-            c.setData(0, Qt.ToolTipRole, _(
+            c.setData(0, Qt.ItemDataRole.ToolTipRole, _(
                 'The location this entry point to does not exist:\n%s')
                 %child.dest_error)
         else:
-            c.setData(0, Qt.ToolTipRole, None)
+            c.setData(0, Qt.ItemDataRole.ToolTipRole, None)
 
         self.tocw.update_status_tip(c)
 
@@ -880,7 +883,7 @@ class TOCView(QWidget):  # {{{
                 process_item(child, c)
 
         root = self.root = self.tocw.invisibleRootItem()
-        root.setData(0, Qt.UserRole, self.toc)
+        root.setData(0, Qt.ItemDataRole.UserRole, self.toc)
         process_item(self.toc, root)
         self.tocw.model().dataChanged.connect(self.data_changed)
         self.tocw.currentItemChanged.connect(self.current_item_changed)
@@ -898,7 +901,7 @@ class TOCView(QWidget):  # {{{
         if item is None:
             # New entry at root level
             c = self.create_item(self.root, child)
-            self.tocw.setCurrentItem(c, 0, QItemSelectionModel.ClearAndSelect)
+            self.tocw.setCurrentItem(c, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
             self.tocw.scrollToItem(c)
         else:
             if where is None:
@@ -914,7 +917,7 @@ class TOCView(QWidget):  # {{{
                     if where == 'after':
                         idx += 1
                 c = self.create_item(parent, child, idx=idx)
-                self.tocw.setCurrentItem(c, 0, QItemSelectionModel.ClearAndSelect)
+                self.tocw.setCurrentItem(c, 0, QItemSelectionModel.SelectionFlag.ClearAndSelect)
                 self.tocw.scrollToItem(c)
 
     def create_toc(self):
@@ -923,8 +926,8 @@ class TOCView(QWidget):  # {{{
         def process_node(parent, toc_parent):
             for i in range(parent.childCount()):
                 item = parent.child(i)
-                title = unicode_type(item.data(0, Qt.DisplayRole) or '').strip()
-                toc = item.data(0, Qt.UserRole)
+                title = unicode_type(item.data(0, Qt.ItemDataRole.DisplayRole) or '').strip()
+                toc = item.data(0, Qt.ItemDataRole.UserRole)
                 dest, frag = toc.dest, toc.frag
                 toc = toc_parent.add(title, dest, frag)
                 process_node(item, toc)
@@ -974,14 +977,19 @@ class TOCView(QWidget):  # {{{
 
 # }}}
 
+
+te_prefs = JSONConfig('toc-editor')
+
+
 class TOCEditor(QDialog):  # {{{
 
     explode_done = pyqtSignal(object)
     writing_done = pyqtSignal(object)
 
-    def __init__(self, pathtobook, title=None, parent=None, prefs=None):
+    def __init__(self, pathtobook, title=None, parent=None, prefs=None, write_result_to=None):
         QDialog.__init__(self, parent)
-        self.prefs = prefs or gprefs
+        self.write_result_to = write_result_to
+        self.prefs = prefs or te_prefs
         self.pathtobook = pathtobook
         self.working = True
 
@@ -1002,12 +1010,12 @@ class TOCEditor(QDialog):  # {{{
         self.pi = pi = ProgressIndicator()
         pi.setDisplaySize(QSize(200, 200))
         pi.startAnimation()
-        ll.addWidget(pi, alignment=Qt.AlignHCenter|Qt.AlignCenter)
+        ll.addWidget(pi, alignment=Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignCenter)
         la = self.wait_label = QLabel(_('Loading %s, please wait...')%t)
         la.setWordWrap(True)
         f = la.font()
         f.setPointSize(20), la.setFont(f)
-        ll.addWidget(la, alignment=Qt.AlignHCenter|Qt.AlignTop)
+        ll.addWidget(la, alignment=Qt.AlignmentFlag.AlignHCenter|Qt.AlignmentFlag.AlignTop)
         self.toc_view = TOCView(self, self.prefs)
         self.toc_view.add_new_item.connect(self.add_new_item)
         self.toc_view.tocw.history_state_changed.connect(self.update_history_buttons)
@@ -1015,17 +1023,17 @@ class TOCEditor(QDialog):  # {{{
         self.item_edit = ItemEdit(self)
         s.addWidget(self.item_edit)
 
-        bb = self.bb = QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
+        bb = self.bb = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel)
         l.addWidget(bb)
         bb.accepted.connect(self.accept)
         bb.rejected.connect(self.reject)
-        self.undo_button = b = bb.addButton(_('&Undo'), bb.ActionRole)
+        self.undo_button = b = bb.addButton(_('&Undo'), QDialogButtonBox.ButtonRole.ActionRole)
         b.setToolTip(_('Undo the last action, if any'))
         b.setIcon(QIcon(I('edit-undo.png')))
         b.clicked.connect(self.toc_view.undo)
 
-        self.explode_done.connect(self.read_toc, type=Qt.QueuedConnection)
-        self.writing_done.connect(self.really_accept, type=Qt.QueuedConnection)
+        self.explode_done.connect(self.read_toc, type=Qt.ConnectionType.QueuedConnection)
+        self.writing_done.connect(self.really_accept, type=Qt.ConnectionType.QueuedConnection)
 
         r = QApplication.desktop().availableGeometry(self)
         self.resize(r.width() - 100, r.height() - 100)
@@ -1063,10 +1071,9 @@ class TOCEditor(QDialog):  # {{{
             error_dialog(self, _('Failed to write book'),
                 _('Could not write %s. Click "Show details" for'
                   ' more information.')%self.book_title, det_msg=tb, show=True)
-            self.prefs['toc_editor_window_geom'] = bytearray(self.saveGeometry())
             super(TOCEditor, self).reject()
             return
-
+        self.write_result(0)
         super(TOCEditor, self).accept()
 
     def reject(self):
@@ -1078,7 +1085,16 @@ class TOCEditor(QDialog):  # {{{
         else:
             self.working = False
             self.prefs['toc_editor_window_geom'] = bytearray(self.saveGeometry())
+            self.write_result(1)
             super(TOCEditor, self).reject()
+
+    def write_result(self, res):
+        if self.write_result_to:
+            with tempfile.NamedTemporaryFile(dir=os.path.dirname(self.write_result_to), delete=False) as f:
+                src = f.name
+                f.write(str(res).encode('utf-8'))
+                f.flush()
+            atomic_rename(src, self.write_result_to)
 
     def start(self):
         t = Thread(target=self.explode)
@@ -1135,15 +1151,15 @@ def main(path=None, title=None):
         # launched from within calibre, as both use calibre-parallel.exe
         set_app_uid(TOC_DIALOG_APP_UID)
 
-    with ExclusiveFile(path + '.lock') as wf:
-        override = 'calibre-gui' if islinux else None
-        app = Application([], override_program_name=override)
-        d = TOCEditor(path, title=title)
-        d.start()
-        ret = 1
-        if d.exec_() == d.Accepted:
-            ret = 0
-        wf.write('{}'.format(ret).encode('ascii'))
+    with open(path + '.started', 'w'):
+        pass
+    override = 'calibre-gui' if islinux else None
+    app = Application([], override_program_name=override)
+    d = TOCEditor(path, title=title, write_result_to=path + '.result')
+    d.start()
+    ret = 1
+    if d.exec_() == QDialog.DialogCode.Accepted:
+        ret = 0
     del d
     del app
     raise SystemExit(ret)

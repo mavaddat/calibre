@@ -332,7 +332,7 @@ class CatalogBuilder(object):
             if self.opts.section_list == ['Genres'] and not self.genres:
                 error_msg = _("No genres to catalog.\n")
                 if not self.opts.cli_environment:
-                    error_msg += _("Check 'Excluded genres' regex in E-book options.\n")
+                    error_msg += _("Check 'Excluded genres' regex in the E-book options.\n")
                 self.opts.log.error(error_msg)
                 self.error.append(_('No books available to catalog'))
                 self.error.append(error_msg)
@@ -884,7 +884,7 @@ class CatalogBuilder(object):
                     self.opts.log.info((u" %-40s %-40s" % (title['title'][0:40],
                                                             title['title_sort'][0:40])).encode('utf-8'))
         else:
-            error_msg = _("No books to catalog.\nCheck 'Excluded books' rules in E-book options.\n")
+            error_msg = _("No books to catalog.\nCheck 'Excluded books' rules in the E-book options.\n")
             self.opts.log.error('*** ' + error_msg + ' ***')
             self.error.append(_('No books available to include in catalog'))
             self.error.append(error_msg)
@@ -3069,7 +3069,7 @@ class CatalogBuilder(object):
             section_header = tocTitle
         navPointTag = self.generate_ncx_section_header('bydescription-ID', section_header, "content/book_%d.html" % int(self.books_by_description[0]['id']))
 
-        self.update_progress_full_step(_("NCX for Descriptions"))
+        self.update_progress_full_step(_("NCX for descriptions"))
 
         # --- Construct the 'Descriptions' section ---
         # Add the section navPoint

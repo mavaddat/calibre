@@ -6,6 +6,8 @@
 .bzrignore
 .build-cache
 .cache
+compile_commands.json
+link_commands.json
 src/calibre/plugins
 resources/images.qrc
 manual/generated
@@ -30,10 +32,12 @@ resources/viewer.html
 resources/content-server/index-generated.html
 resources/content-server/locales.zip
 resources/mathjax
+resources/fonts/liberation
 resources/mozilla-ca-certs.pem
 resources/user-agent-data.json
 icons/icns/*.iconset
 setup/installer/windows/calibre/build.log
+setup/pyqt_enums
 tags
 nbproject/
 translations/

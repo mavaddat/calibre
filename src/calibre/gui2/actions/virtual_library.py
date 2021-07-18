@@ -2,7 +2,7 @@
 # vim:fileencoding=utf-8
 # License: GPLv3 Copyright: 2018, Kovid Goyal <kovid at kovidgoyal.net>
 
-from PyQt5.Qt import QToolButton, QAction
+from qt.core import QToolButton, QAction
 
 from calibre.gui2.actions import InterfaceAction
 
@@ -16,7 +16,7 @@ class VirtualLibraryAction(InterfaceAction):
     )
     action_type = 'current'
     action_add_menu = True
-    popup_type = QToolButton.InstantPopup
+    popup_type = QToolButton.ToolButtonPopupMode.InstantPopup
     dont_add_to = frozenset(('context-menu-device', 'menubar-device'))
 
     def genesis(self):

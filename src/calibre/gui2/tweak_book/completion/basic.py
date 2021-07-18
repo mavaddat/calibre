@@ -8,7 +8,7 @@ __copyright__ = '2014, Kovid Goyal <kovid at kovidgoyal.net>'
 from threading import Event
 from collections import namedtuple, OrderedDict
 
-from PyQt5.Qt import QObject, pyqtSignal, Qt
+from qt.core import QObject, pyqtSignal, Qt
 
 from calibre import prepare_string_for_xml
 from calibre.ebooks.oeb.polish.container import OEB_STYLES, OEB_FONTS, name_to_href
@@ -153,7 +153,7 @@ class HandleDataRequest(QObject):
     def __init__(self):
         QObject.__init__(self)
         self.called = Event()
-        self.call.connect(self.run_func, Qt.QueuedConnection)
+        self.call.connect(self.run_func, Qt.ConnectionType.QueuedConnection)
 
     def run_func(self, func, data):
         try:

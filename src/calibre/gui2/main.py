@@ -10,7 +10,7 @@ import time
 import traceback
 
 import apsw
-from PyQt5.Qt import QCoreApplication, QIcon, QObject, QTimer
+from qt.core import QCoreApplication, QIcon, QObject, QTimer
 
 from calibre import force_unicode, prints
 from calibre.constants import (
@@ -99,7 +99,7 @@ def find_portable_library():
     if len(lib) > 74:
         error_dialog(None, _('Path too long'),
             _("Path to Calibre Portable (%s) "
-                'too long. Must be less than 59 characters.')%base, show=True)
+                'too long. It must be less than 59 characters.')%base, show=True)
         raise AbortInit()
 
     prefs.set('library_path', lib)
@@ -153,17 +153,30 @@ def get_default_library_path():
     return x
 
 
+def try_other_known_library_paths():
+    stats = gprefs.get('library_usage_stats', {})
+    if stats:
+        for candidate in sorted(stats.keys(), key=stats.__getitem__, reverse=True):
+            candidate = os.path.abspath(candidate)
+            if os.path.exists(candidate):
+                return candidate
+
+
 def get_library_path(gui_runner):
     library_path = prefs['library_path']
     if library_path is None:  # Need to migrate to new database layout
         base = os.path.expanduser('~')
         if not base or not os.path.exists(base):
-            from PyQt5.Qt import QDir
+            from qt.core import QDir
             base = unicode_type(QDir.homePath()).replace('/', os.sep)
         candidate = gui_runner.choose_dir(base)
         if not candidate:
             candidate = os.path.join(base, 'Calibre Library')
         library_path = os.path.abspath(candidate)
+    elif not os.path.exists(library_path):
+        q = try_other_known_library_paths()
+        if q:
+            library_path = q
     if not os.path.exists(library_path):
         try:
             os.makedirs(library_path)
@@ -305,7 +318,7 @@ class GuiRunner(QObject):
                 details = ''
             self.show_error(_('Startup error'), _(
                 'There was an error during {0} startup. Parts of {0} may not function.'
-                ' Click Show details to learn more.').format(__appname__), det_msg=details)
+                ' Click "Show details" to learn more.').format(__appname__), det_msg=details)
 
     def initialize_db(self):
         from calibre.db.legacy import LibraryDatabase
@@ -434,13 +447,18 @@ singleinstance_name = 'GUI'
 def send_message(msg):
     try:
         send_message_in_process(msg)
-    except Exception as err:
-        print(_('Failed to contact running instance of calibre'), file=sys.stderr, flush=True)
-        print(err, file=sys.stderr, flush=True)
-        error_dialog(None, _('Contacting calibre failed'), _(
-            'Failed to contact running instance of calibre, try restarting calibre'),
-            det_msg=str(err) + '\n\n' + repr(msg), show=True)
-        return False
+    except Exception:
+        time.sleep(2)
+        try:
+            send_message_in_process(msg)
+        except Exception as err:
+            print(_('Failed to contact running instance of calibre'), file=sys.stderr, flush=True)
+            print(err, file=sys.stderr, flush=True)
+            if Application.instance():
+                error_dialog(None, _('Contacting calibre failed'), _(
+                    'Failed to contact running instance of calibre, try restarting calibre'),
+                    det_msg=str(err) + '\n\n' + repr(msg), show=True)
+            return False
     return True
 
 
@@ -531,7 +549,7 @@ if __name__ == '__main__':
         if not iswindows:
             raise
         tb = traceback.format_exc()
-        from PyQt5.Qt import QErrorMessage
+        from qt.core import QErrorMessage
         logfile = os.path.join(os.path.expanduser('~'), 'calibre.log')
         if os.path.exists(logfile):
             with open(logfile) as f:

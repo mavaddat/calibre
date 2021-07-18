@@ -15,7 +15,9 @@ from functools import partial
 from bypy.constants import (
     OUTPUT_DIR, PREFIX, SRC as CALIBRE_DIR, is64bit, python_major_minor_version
 )
-from bypy.freeze import extract_extension_modules, freeze_python, path_to_freeze_dir
+from bypy.freeze import (
+    extract_extension_modules, fix_pycryptodome, freeze_python, path_to_freeze_dir
+)
 from bypy.utils import (
     create_job, get_dll_path, mkdtemp, parallel_build, py_compile, run, walk
 )
@@ -41,7 +43,7 @@ def binary_includes():
             get_dll_path,
             ('usb-1.0 mtp expat sqlite3 ffi z lzma openjp2 poppler dbus-1 iconv xml2 xslt jpeg png16'
              ' webp webpmux webpdemux exslt ncursesw readline chm hunspell-1.7 hyphen'
-             ' icudata icui18n icuuc icuio gcrypt gpg-error'
+             ' icudata icui18n icuuc icuio stemmer gcrypt gpg-error'
              ' gobject-2.0 glib-2.0 gthread-2.0 gmodule-2.0 gio-2.0 dbus-glib-1').split()
         )) + [
             get_dll_path('podofo', 3), get_dll_path('bz2', 2), j(PREFIX, 'lib', 'libunrar.so'),
@@ -158,6 +160,7 @@ def copy_python(env, ext_dir):
     pdir = j(env.lib_dir, 'calibre-extensions')
     if not os.path.exists(pdir):
         os.mkdir(pdir)
+    fix_pycryptodome(j(env.py_dir, 'site-packages'))
     for x in os.listdir(j(env.py_dir, 'site-packages')):
         os.rename(j(env.py_dir, 'site-packages', x), j(env.py_dir, x))
     os.rmdir(j(env.py_dir, 'site-packages'))

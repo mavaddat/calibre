@@ -7,26 +7,27 @@ __copyright__ = '2010, Kovid Goyal <kovid@kovidgoyal.net>'
 __docformat__ = 'restructuredtext en'
 
 import os
-from functools import partial
 from collections import defaultdict
+from functools import partial
+from qt.core import QApplication, QDialog, QPixmap, QTimer
 
-from PyQt5.Qt import QPixmap, QTimer, QApplication
-
-from calibre import as_unicode, guess_type
-from calibre.gui2 import (error_dialog, choose_files, choose_dir,
-        warning_dialog, info_dialog, gprefs)
+from calibre import as_unicode, guess_type, prepare_string_for_xml
+from calibre.constants import iswindows
+from calibre.ebooks import BOOK_EXTENSIONS
+from calibre.ebooks.metadata import MetaInformation, normalize_isbn
+from calibre.gui2 import (
+    choose_dir, choose_files, error_dialog, gprefs, info_dialog, question_dialog,
+    warning_dialog
+)
+from calibre.gui2.actions import InterfaceAction
 from calibre.gui2.dialogs.add_empty_book import AddEmptyBookDialog
 from calibre.gui2.dialogs.confirm_delete import confirm
 from calibre.gui2.dialogs.progress import ProgressDialog
-from calibre.ebooks import BOOK_EXTENSIONS
+from calibre.ptempfile import PersistentTemporaryFile
 from calibre.utils.config_base import tweaks
 from calibre.utils.filenames import ascii_filename, make_long_path_useable
 from calibre.utils.icu import sort_key
-from calibre.gui2.actions import InterfaceAction
-from calibre.gui2 import question_dialog
-from calibre.ebooks.metadata import MetaInformation
-from calibre.ptempfile import PersistentTemporaryFile
-from polyglot.builtins import iteritems, string_or_bytes, range
+from polyglot.builtins import iteritems, range, string_or_bytes
 
 
 def get_filters():
@@ -52,13 +53,13 @@ class AddAction(InterfaceAction):
             , _('A'))
     action_type = 'current'
     action_add_menu = True
-    action_menu_clone_qaction = _('Add books from a single directory')
+    action_menu_clone_qaction = _('Add books from a single folder')
 
     def genesis(self):
         self._add_filesystem_book = self.Dispatcher(self.__add_filesystem_book)
         self.add_menu = self.qaction.menu()
         ma = partial(self.create_menu_action, self.add_menu)
-        ma('recursive-add', _('Add from directories and sub-directories')).triggered.connect(self.add_recursive_question)
+        ma('recursive-add', _('Add from folders and sub-folders')).triggered.connect(self.add_recursive_question)
         ma('archive-add-book', _('Add multiple books from archive (ZIP/RAR)')).triggered.connect(self.add_from_archive)
         self.add_menu.addSeparator()
         ma('add-empty', _('Add empty book (Book entry with no formats)'),
@@ -206,7 +207,7 @@ class AddAction(InterfaceAction):
         from calibre.ebooks.oeb.polish.create import valid_empty_formats
         from calibre.gui2.dialogs.choose_format import ChooseFormatDialog
         d = ChooseFormatDialog(self.gui, _('Choose format of empty file'), sorted(valid_empty_formats))
-        if d.exec_() != d.Accepted or not d.format():
+        if d.exec_() != QDialog.DialogCode.Accepted or not d.format():
             return
         self._add_empty_format(d.format())
 
@@ -261,7 +262,7 @@ class AddAction(InterfaceAction):
 
     def add_from_archive(self):
         single = question_dialog(self.gui, _('Type of archive'), _(
-            'Will the archive have a single book per internal directory?'))
+            'Will the archive have a single book per internal folder?'))
         paths = choose_files(
             self.gui, 'recursive-archive-add', _('Choose archive file'),
             filters=[(_('Archives'), ('zip', 'rar'))], all_files=False, select_only_single_file=False)
@@ -300,7 +301,7 @@ class AddAction(InterfaceAction):
 
     def add_recursive_question(self):
         single =  question_dialog(self.gui, _('Multi-file books?'), _(
-            'Assume all e-book files in a single directory are the same book in different formats?'))
+            'Assume all e-book files in a single folder are the same book in different formats?'))
         self.add_recursive(single)
 
     def add_empty(self, *args):
@@ -320,7 +321,7 @@ class AddAction(InterfaceAction):
             title = index.model().db.title(index.row())
         dlg = AddEmptyBookDialog(self.gui, self.gui.library_view.model().db,
                                  author, series, dup_title=title)
-        if dlg.exec_() == dlg.Accepted:
+        if dlg.exec_() == QDialog.DialogCode.Accepted:
             temp_files = []
             num = dlg.qty_to_add
             series = dlg.selected_series
@@ -362,8 +363,35 @@ class AddAction(InterfaceAction):
             for path in temp_files:
                 os.remove(path)
 
-    def add_isbns(self, books, add_tags=[]):
-        self.isbn_books = list(books)
+    def check_for_existing_isbns(self, books):
+        db = self.gui.current_db.new_api
+        book_id_identifiers = db.all_field_for('identifiers', db.all_book_ids(tuple))
+        existing_isbns = {normalize_isbn(ids.get('isbn', '')): book_id for book_id, ids in book_id_identifiers.items()}
+        existing_isbns.pop('', None)
+        ok = []
+        duplicates = []
+        for book in books:
+            q = normalize_isbn(book['isbn'])
+            if q and q in existing_isbns:
+                duplicates.append((book, existing_isbns[q]))
+            else:
+                ok.append(book)
+        if duplicates:
+            det_msg = '\n'.join(f'{book["isbn"]}: {db.field_for("title", book_id)}' for book, book_id in duplicates)
+            if question_dialog(self.gui, _('Duplicates found'), _(
+                'Books with some of the specified ISBNs already exist in the calibre library.'
+                ' Click "Show details" for the full list. Do you want to add them anyway?'), det_msg=det_msg
+            ):
+                ok += [x[0] for x in duplicates]
+        return ok
+
+    def add_isbns(self, books, add_tags=[], check_for_existing=False):
+        books = list(books)
+        if check_for_existing:
+            books = self.check_for_existing_isbns(books)
+            if not books:
+                return
+        self.isbn_books = books
         self.add_by_isbn_ids = set()
         self.isbn_add_tags = add_tags
         QTimer.singleShot(10, self.do_one_isbn_add)
@@ -430,6 +458,9 @@ class AddAction(InterfaceAction):
         formats = []
         from calibre.gui2.dnd import image_extensions
         image_exts = set(image_extensions()) - set(tweaks['cover_drop_exclude'])
+        if iswindows:
+            from calibre.gui2.add import resolve_windows_links
+            paths = list(resolve_windows_links(paths, hwnd=int(self.gui.effectiveWinId())))
         for path in paths:
             ext = os.path.splitext(path)[1].lower()
             if ext:
@@ -446,11 +477,16 @@ class AddAction(InterfaceAction):
                 accept = True
         if accept and event is not None:
             event.accept()
+        add_as_book = False
         if do_confirm and formats:
-            if not confirm(
+            ok, add_as_book = confirm(
                 _('You have dropped some files onto the book <b>%s</b>. This will'
                   ' add or replace the files for this book. Do you want to proceed?') % db.title(cid, index_is_id=True),
-                'confirm_drop_on_book', parent=self.gui):
+                'confirm_drop_on_book', parent=self.gui,
+                extra_button=ngettext('Add as new book', 'Add as new books', len(formats)))
+            if ok and add_as_book:
+                add_as_book = [path for ext, path in formats]
+            if not ok or add_as_book:
                 formats = []
         for ext, path in formats:
             db.add_format_with_hooks(cid, ext, path, index_is_id=True)
@@ -458,6 +494,8 @@ class AddAction(InterfaceAction):
             self.gui.library_view.model().current_changed(current_idx, current_idx)
         if cover_changed:
             self.gui.refresh_cover_browser()
+        if add_as_book:
+            self.files_dropped(add_as_book)
 
     def __add_filesystem_book(self, paths, allow_device=True):
         if isinstance(paths, string_or_bytes):
@@ -478,8 +516,8 @@ class AddAction(InterfaceAction):
     def add_from_isbn(self, *args):
         from calibre.gui2.dialogs.add_from_isbn import AddFromISBN
         d = AddFromISBN(self.gui)
-        if d.exec_() == d.Accepted and d.books:
-            self.add_isbns(d.books, add_tags=d.set_tags)
+        if d.exec_() == QDialog.DialogCode.Accepted and d.books:
+            self.add_isbns(d.books, add_tags=d.set_tags, check_for_existing=d.check_for_existing)
 
     def add_books(self, *args):
         '''
@@ -536,10 +574,10 @@ class AddAction(InterfaceAction):
                 merged[author].append(title)
             lines = []
             for author in sorted(merged, key=sort_key):
-                lines.append(author)
-                for title in sorted(merged[author], key=sort_key):
-                    lines.append('\t' + title)
-                lines.append('')
+                lines.append(f'<b><i>{prepare_string_for_xml(author)}</i></b><ol style="margin-top: 0">')
+                for title in sorted(merged[author]):
+                    lines.append(f'<li>{prepare_string_for_xml(title)}</li>')
+                lines.append('</ol>')
             pm = ngettext('The following duplicate book was found.',
                           'The following {} duplicate books were found.',
                           len(adder.merged_books)).format(len(adder.merged_books))
@@ -547,7 +585,7 @@ class AddAction(InterfaceAction):
                 _('Incoming book formats were processed and merged into your '
                     'calibre database according to your auto-merge '
                     'settings. Click "Show details" to see the list of merged books.'),
-                    det_msg='\n'.join(lines), show=True)
+                    det_msg='\n'.join(lines), show=True, only_copy_details=True)
 
         if adder.number_of_books_added > 0 or adder.merged_books:
             # The formats of the current book could have changed if

@@ -9,8 +9,9 @@ __docformat__ = 'restructuredtext en'
 import re
 from functools import partial
 
-from PyQt5.Qt import Qt, QListWidgetItem
+from qt.core import Qt, QListWidgetItem
 
+from calibre.gui2.actions.choose_library import get_change_library_action_plugin
 from calibre.gui2.preferences import ConfigWidgetBase, test_widget, Setting
 from calibre.gui2.preferences.behavior_ui import Ui_Form
 from calibre.gui2 import config, info_dialog, dynamic, gprefs
@@ -32,7 +33,7 @@ def input_order_drop_event(self, ev):
 
 class OutputFormatSetting(Setting):
 
-    CHOICES_SEARCH_FLAGS = Qt.MatchFixedString
+    CHOICES_SEARCH_FLAGS = Qt.MatchFlag.MatchFixedString
 
 
 class ConfigWidget(ConfigWidgetBase, Ui_Form):
@@ -94,7 +95,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
 
     def commit(self):
         input_map = prefs['input_format_order']
-        input_cols = [unicode_type(self.opt_input_order.item(i).data(Qt.UserRole) or '') for
+        input_cols = [unicode_type(self.opt_input_order.item(i).data(Qt.ItemDataRole.UserRole) or '') for
                 i in range(self.opt_input_order.count())]
         if input_map != input_cols:
             prefs['input_format_order'] = input_cols
@@ -102,7 +103,10 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         old = config['internally_viewed_formats']
         if fmts != old:
             config['internally_viewed_formats'] = fmts
-        return ConfigWidgetBase.commit(self)
+        ret = ConfigWidgetBase.commit(self)
+        # Signal a possible change of the VL at startup opt
+        get_change_library_action_plugin().rebuild_change_library_menus.emit()
+        return ret
 
     # Internally viewed formats {{{
     def internally_viewed_formats_changed(self, *args):
@@ -128,9 +132,9 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         for ext in sorted(exts):
             viewer.addItem(ext.upper())
             item = viewer.item(viewer.count()-1)
-            item.setFlags(Qt.ItemIsEnabled|Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Checked if
-                    ext.upper() in fmts else Qt.Unchecked)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if
+                    ext.upper() in fmts else Qt.CheckState.Unchecked)
         viewer.blockSignals(False)
 
     @property
@@ -138,7 +142,7 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
         fmts = []
         viewer = self.opt_internally_viewed_formats
         for i in range(viewer.count()):
-            if viewer.item(i).checkState() == Qt.Checked:
+            if viewer.item(i).checkState() == Qt.CheckState.Checked:
                 fmts.append(unicode_type(viewer.item(i).text()))
         return fmts
     # }}}
@@ -155,8 +159,8 @@ class ConfigWidget(ConfigWidgetBase, Ui_Form):
             all_formats.add(fmt.upper())
         for format in input_map + list(all_formats.difference(input_map)):
             item = QListWidgetItem(format, self.opt_input_order)
-            item.setData(Qt.UserRole, (format))
-            item.setFlags(Qt.ItemIsEnabled|Qt.ItemIsSelectable|Qt.ItemIsDragEnabled)
+            item.setData(Qt.ItemDataRole.UserRole, (format))
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsSelectable|Qt.ItemFlag.ItemIsDragEnabled)
 
     def up_input(self, *args):
         idx = self.opt_input_order.currentRow()

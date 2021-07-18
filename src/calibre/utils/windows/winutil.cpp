@@ -61,7 +61,7 @@ PyGUID_dealloc(PyGUID *self) { }
 static PyObject*
 PyGUID_repr(PyGUID *self) {
 	com_wchar_raii s;
-	HRESULT hr = StringFromIID(self->guid, s.address());
+	HRESULT hr = StringFromIID(self->guid, s.unsafe_address());
 	if (FAILED(hr)) return error_from_hresult(hr);
 	return PyUnicode_FromWideChar(s.ptr(), -1);
 }
@@ -317,7 +317,7 @@ known_folder_path(PyObject *self, PyObject *args) {
 	DWORD flags = KF_FLAG_DEFAULT;
 	if (!PyArg_ParseTuple(args, "O!|k", &PyGUIDType, &id, &flags)) return NULL;
 	com_wchar_raii path;
-	HRESULT hr = SHGetKnownFolderPath(id->guid, flags, NULL, path.address());
+	HRESULT hr = SHGetKnownFolderPath(id->guid, flags, NULL, path.unsafe_address());
 	return PyUnicode_FromWideChar(path.ptr(), -1);
 }
 
@@ -675,6 +675,44 @@ winutil_move_to_trash(PyObject *self, PyObject *args) {
 	Py_RETURN_NONE;
 }
 
+static PyObject*
+resolve_lnk(PyObject *self, PyObject *args) {
+	wchar_raii path;
+    HRESULT hr;
+    PyObject *win_id = NULL;
+    unsigned short timeout = 0;
+	if (!PyArg_ParseTuple(args, "O&|HO!", py_to_wchar, &path, &timeout, &PyLong_Type, &win_id)) return NULL;
+	if (!path.ptr()) {
+		PyErr_SetString(PyExc_TypeError, "Path must not be None");
+		return NULL;
+	}
+	scoped_com_initializer com;
+	if (!com.succeded()) { PyErr_SetString(PyExc_OSError, "Failed to initialize COM"); return NULL; }
+	CComPtr<IShellLink> shell_link;
+	if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shell_link)))) {
+		PyErr_SetString(PyExc_OSError, "Failed to create IShellLink instance");
+		return NULL;
+	}
+	CComPtr<IPersistFile> persist_file;
+	if (FAILED(shell_link->QueryInterface(IID_PPV_ARGS(&persist_file)))) {
+		PyErr_SetString(PyExc_OSError, "Failed to create IPersistFile instance");
+		return NULL;
+	}
+    hr = persist_file->Load(path.ptr(), 0);
+    if (FAILED(hr)) return error_from_hresult(hr, "Failed to load link");
+    DWORD flags = SLR_UPDATE | ( (timeout & 0xffff) << 16 );
+    if (win_id) {
+        hr = shell_link->Resolve(static_cast<HWND>(PyLong_AsVoidPtr(win_id)), flags);
+    } else {
+        hr = shell_link->Resolve(NULL, flags | SLR_NO_UI | SLR_NOTRACK | SLR_NOLINKINFO);
+    }
+	if (FAILED(hr)) return error_from_hresult(hr, "Failed to resolve link");
+    wchar_t buf[2048];
+    hr = shell_link->GetPath(buf, arraysz(buf), NULL, 0);
+    if (FAILED(hr)) return error_from_hresult(hr, "Failed to get path from link");
+    return PyUnicode_FromWideChar(buf, -1);
+}
+
 static PyObject *
 winutil_manage_shortcut(PyObject *self, PyObject *args) {
 	wchar_raii path, target, description, quoted_args;
@@ -701,7 +739,7 @@ winutil_manage_shortcut(PyObject *self, PyObject *args) {
 	if (!target.ptr()) {
 		wchar_t buf[2048];
 		if (FAILED(persist_file->Load(path.ptr(), 0))) Py_RETURN_NONE;
-		if (FAILED(shell_link->GetPath(buf, sizeof(buf), NULL, 0))) Py_RETURN_NONE;
+		if (FAILED(shell_link->GetPath(buf, arraysz(buf), NULL, 0))) Py_RETURN_NONE;
 		return Py_BuildValue("u", buf);
 	}
 
@@ -794,8 +832,7 @@ get_long_path_name(PyObject *self, PyObject *args) {
     Py_END_ALLOW_THREADS
     if (needed_size >= current_size - 32) {
         current_size = needed_size + 32;
-        PyMem_Free(buf.ptr());
-        buf.set_ptr((wchar_t*)PyMem_Malloc(current_size * sizeof(wchar_t)));
+        buf.attach((wchar_t*)PyMem_Malloc(current_size * sizeof(wchar_t)));
         if (!buf) return PyErr_NoMemory();
         Py_BEGIN_ALLOW_THREADS
         needed_size = GetLongPathNameW(path.ptr(), buf.ptr(), current_size);
@@ -1170,6 +1207,10 @@ static PyMethodDef winutil_methods[] = {
 
     {"manage_shortcut", (PyCFunction)winutil_manage_shortcut, METH_VARARGS,
         "manage_shortcut()\n\nManage a shortcut"
+    },
+
+    {"resolve_lnk", (PyCFunction)resolve_lnk, METH_VARARGS,
+        "resolve_lnk()\n\nGet the target of a lnk file."
     },
 
     {"get_file_id", (PyCFunction)winutil_get_file_id, METH_VARARGS,

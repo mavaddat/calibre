@@ -22,7 +22,9 @@ from itertools import repeat
 from bypy.constants import (
     OUTPUT_DIR, PREFIX, PYTHON, SRC as CALIBRE_DIR, python_major_minor_version
 )
-from bypy.freeze import extract_extension_modules, freeze_python, path_to_freeze_dir
+from bypy.freeze import (
+    extract_extension_modules, fix_pycryptodome, freeze_python, path_to_freeze_dir
+)
 from bypy.utils import current_dir, mkdtemp, py_compile, timeit, walk
 
 abspath, join, basename, dirname = os.path.abspath, os.path.join, os.path.basename, os.path.dirname
@@ -253,7 +255,7 @@ class Freeze(object):
         for x, is_id in self.get_dependencies(path_to_lib):
             if x.startswith('@rpath/Qt'):
                 yield x, x[len('@rpath/'):], is_id
-            elif x == 'libunrar.dylib' and not is_id:
+            elif x in ('libunrar.dylib', 'libstemmer.0.dylib', 'libstemmer.dylib') and not is_id:
                 yield x, x, is_id
             else:
                 for y in (PREFIX + '/lib/', PREFIX + '/python/Python.framework/'):
@@ -508,7 +510,7 @@ class Freeze(object):
         for x in (
             'usb-1.0.0', 'mtp.9', 'chm.0', 'sqlite3.0', 'hunspell-1.7.0',
             'icudata.67', 'icui18n.67', 'icuio.67', 'icuuc.67', 'hyphen.0',
-            'xslt.1', 'exslt.0', 'xml2.2', 'z.1', 'unrar', 'lzma.5',
+            'stemmer.0', 'xslt.1', 'exslt.0', 'xml2.2', 'z.1', 'unrar', 'lzma.5',
             'crypto.1.1', 'ssl.1.1', 'iconv.2',  # 'ltdl.7'
         ):
             print('\nAdding', x)
@@ -545,6 +547,7 @@ class Freeze(object):
             finally:
                 if tdir is not None:
                     shutil.rmtree(tdir)
+        fix_pycryptodome(self.site_packages)
         try:
             shutil.rmtree(join(self.site_packages, 'calibre', 'plugins'))
         except OSError as err:
@@ -653,7 +656,11 @@ class Freeze(object):
             os.rename(join(src, x), join(pydir, x))
         os.rmdir(src)
         py_compile(pydir)
-        freeze_python(pydir, dest, self.inc_dir, self.ext_map, develop_mode_env_var='CALIBRE_DEVELOP_FROM')
+        freeze_python(
+            pydir, dest, self.inc_dir, self.ext_map,
+            develop_mode_env_var='CALIBRE_DEVELOP_FROM',
+            path_to_user_env_vars='~/Library/Preferences/calibre/macos-env.txt'
+        )
         shutil.rmtree(pydir)
 
     def create_app_clone(self, name, specialise_plist, remove_doc_types=False, base_dir=None):
@@ -740,7 +747,7 @@ class Freeze(object):
                                                  'lib', 'python' + py_ver))
 
     @flush
-    def makedmg(self, d, volname, internet_enable=True):
+    def makedmg(self, d, volname):
         ''' Copy a directory d into a dmg named volname '''
         print('\nSigning...')
         sys.stdout.flush()
@@ -773,8 +780,6 @@ class Freeze(object):
         print('\nCreating dmg...')
         with timeit() as times:
             subprocess.check_call(cmd + [dmg])
-            if internet_enable:
-                subprocess.check_call(['/usr/bin/hdiutil', 'internet-enable', '-yes', dmg])
         print('dmg created in %d minutes and %d seconds' % tuple(times))
         shutil.rmtree(tdir)
         size = os.stat(dmg).st_size / (1024 * 1024.)

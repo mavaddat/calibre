@@ -5,7 +5,7 @@
 
 import shutil
 
-from PyQt5.Qt import (
+from qt.core import (
     QAbstractListModel, QCheckBox, QComboBox, QCoreApplication, QDialog,
     QDialogButtonBox, QFont, QFrame, QGridLayout, QHBoxLayout, QIcon, QLabel,
     QListView, QModelIndex, QScrollArea, QSize, QSizePolicy, QSpacerItem,
@@ -45,11 +45,11 @@ class GroupModel(QAbstractListModel):
             widget = self.widgets[index.row()]
         except:
             return None
-        if role == Qt.DisplayRole:
+        if role == Qt.ItemDataRole.DisplayRole:
             return (widget.config_title())
-        if role == Qt.DecorationRole:
+        if role == Qt.ItemDataRole.DecorationRole:
             return (widget.config_icon())
-        if role == Qt.FontRole:
+        if role == Qt.ItemDataRole.FontRole:
             f = QFont()
             f.setBold(True)
             return (f)
@@ -84,10 +84,8 @@ class Config(QDialog):
         self.input_formats.currentIndexChanged[native_string_type].connect(self.setup_pipeline)
         self.output_formats.currentIndexChanged[native_string_type].connect(self.setup_pipeline)
         self.groups.setSpacing(5)
-        self.groups.activated[(QModelIndex)].connect(self.show_pane)
-        self.groups.clicked[(QModelIndex)].connect(self.show_pane)
         self.groups.entered[(QModelIndex)].connect(self.show_group_help)
-        rb = self.buttonBox.button(self.buttonBox.RestoreDefaults)
+        rb = self.buttonBox.button(QDialogButtonBox.StandardButton.RestoreDefaults)
         rb.setText(_('Restore &defaults'))
         rb.clicked.connect(self.restore_defaults)
         self.groups.setMouseTracking(True)
@@ -96,6 +94,9 @@ class Config(QDialog):
             QApplication.instance().safe_restore_geometry(self, geom)
         else:
             self.resize(self.sizeHint())
+
+    def current_group_changed(self, cur, prev):
+        self.show_pane(cur)
 
     def setupUi(self):
         self.setObjectName("Dialog")
@@ -109,26 +110,26 @@ class Config(QDialog):
         self.input_label.setObjectName("input_label")
         self.horizontalLayout.addWidget(self.input_label)
         self.input_formats = QComboBox(self)
-        self.input_formats.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.input_formats.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.input_formats.setMinimumContentsLength(5)
         self.input_formats.setObjectName("input_formats")
         self.horizontalLayout.addWidget(self.input_formats)
         self.opt_individual_saved_settings = QCheckBox(self)
         self.opt_individual_saved_settings.setObjectName("opt_individual_saved_settings")
         self.horizontalLayout.addWidget(self.opt_individual_saved_settings)
-        spacerItem = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        spacerItem = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         self.horizontalLayout.addItem(spacerItem)
         self.label_2 = QLabel(self)
         self.label_2.setObjectName("label_2")
         self.horizontalLayout.addWidget(self.label_2)
         self.output_formats = QComboBox(self)
-        self.output_formats.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.output_formats.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
         self.output_formats.setMinimumContentsLength(5)
         self.output_formats.setObjectName("output_formats")
         self.horizontalLayout.addWidget(self.output_formats)
         self.gridLayout.addLayout(self.horizontalLayout, 0, 0, 1, 2)
         self.groups = QListView(self)
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         sizePolicy.setHorizontalStretch(1)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.groups.sizePolicy().hasHeightForWidth())
@@ -139,12 +140,12 @@ class Config(QDialog):
         self.groups.setObjectName("groups")
         self.gridLayout.addWidget(self.groups, 1, 0, 3, 1)
         self.scrollArea = QScrollArea(self)
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         sizePolicy.setHorizontalStretch(4)
         sizePolicy.setVerticalStretch(10)
         sizePolicy.setHeightForWidth(self.scrollArea.sizePolicy().hasHeightForWidth())
         self.scrollArea.setSizePolicy(sizePolicy)
-        self.scrollArea.setFrameShape(QFrame.NoFrame)
+        self.scrollArea.setFrameShape(QFrame.Shape.NoFrame)
         self.scrollArea.setLineWidth(0)
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setObjectName("scrollArea")
@@ -152,13 +153,15 @@ class Config(QDialog):
         self.page.setObjectName("page")
         self.gridLayout.addWidget(self.scrollArea, 1, 1, 1, 1)
         self.buttonBox = QDialogButtonBox(self)
-        self.buttonBox.setOrientation(Qt.Horizontal)
-        self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel|QDialogButtonBox.Ok|QDialogButtonBox.RestoreDefaults)
+        self.buttonBox.setOrientation(Qt.Orientation.Horizontal)
+        self.buttonBox.setStandardButtons(
+            QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok|
+            QDialogButtonBox.StandardButton.RestoreDefaults)
         self.buttonBox.setObjectName("buttonBox")
         self.gridLayout.addWidget(self.buttonBox, 3, 1, 1, 1)
         self.help = QTextEdit(self)
         self.help.setReadOnly(True)
-        sizePolicy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.help.sizePolicy().hasHeightForWidth())
@@ -245,6 +248,7 @@ class Config(QDialog):
         idx = oidx if -1 < oidx < self._groups_model.rowCount() else 0
         self.groups.setCurrentIndex(self._groups_model.index(idx))
         self.show_pane(idx)
+        self.groups.selectionModel().currentChanged.connect(self.current_group_changed)
         try:
             shutil.rmtree(self.plumber.archive_input_tdir, ignore_errors=True)
         except Exception:

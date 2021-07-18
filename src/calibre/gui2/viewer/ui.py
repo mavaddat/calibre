@@ -2,28 +2,29 @@
 # vim:fileencoding=utf-8
 # License: GPL v3 Copyright: 2018, Kovid Goyal <kovid at kovidgoyal.net>
 
-
 import json
 import os
 import re
 import sys
+import time
 from collections import defaultdict, namedtuple
 from hashlib import sha256
+from qt.core import (
+    QApplication, QCursor, QDockWidget, QEvent, QMainWindow, QMenu, QMimeData,
+    QModelIndex, QPixmap, Qt, QTimer, QToolBar, QUrl, QVBoxLayout, QWidget,
+    pyqtSignal
+)
 from threading import Thread
 
-from PyQt5.Qt import (
-    QApplication, QCursor, QDockWidget, QEvent, QMenu, QMimeData, QModelIndex,
-    QPixmap, Qt, QTimer, QToolBar, QUrl, QVBoxLayout, QWidget, pyqtSignal
-)
-
 from calibre import prints
-from calibre.constants import DEBUG
+from calibre.constants import ismacos, iswindows
 from calibre.customize.ui import available_input_formats
 from calibre.db.annotations import merge_annotations
-from calibre.gui2 import choose_files, error_dialog
+from calibre.gui2 import choose_files, error_dialog, sanitize_env_vars
 from calibre.gui2.dialogs.drm_error import DRMErrorMessage
 from calibre.gui2.image_popup import ImagePopup
 from calibre.gui2.main_window import MainWindow
+from calibre.gui2.viewer import get_current_book_data, performance_monitor
 from calibre.gui2.viewer.annotations import (
     AnnotationsSaveWorker, annotations_dir, parse_annotations
 )
@@ -43,7 +44,6 @@ from calibre.gui2.viewer.web_view import WebView, get_path_for_name, set_book_pa
 from calibre.utils.date import utcnow
 from calibre.utils.img import image_from_path
 from calibre.utils.ipc.simple_worker import WorkerError
-from calibre.utils.monotonic import monotonic
 from polyglot.builtins import as_bytes, as_unicode, iteritems, itervalues
 
 
@@ -60,15 +60,15 @@ def dock_defs():
     Dock = namedtuple('Dock', 'name title initial_area allowed_areas')
     ans = {}
 
-    def d(title, name, area, allowed=Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea):
+    def d(title, name, area, allowed=Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea):
         ans[name] = Dock(name + '-dock', title, area, allowed)
 
-    d(_('Table of Contents'), 'toc', Qt.LeftDockWidgetArea),
-    d(_('Lookup'), 'lookup', Qt.RightDockWidgetArea),
-    d(_('Bookmarks'), 'bookmarks', Qt.RightDockWidgetArea)
-    d(_('Search'), 'search', Qt.LeftDockWidgetArea)
-    d(_('Inspector'), 'inspector', Qt.RightDockWidgetArea, Qt.AllDockWidgetAreas)
-    d(_('Highlights'), 'highlights', Qt.RightDockWidgetArea)
+    d(_('Table of Contents'), 'toc', Qt.DockWidgetArea.LeftDockWidgetArea),
+    d(_('Lookup'), 'lookup', Qt.DockWidgetArea.RightDockWidgetArea),
+    d(_('Bookmarks'), 'bookmarks', Qt.DockWidgetArea.RightDockWidgetArea)
+    d(_('Search'), 'search', Qt.DockWidgetArea.LeftDockWidgetArea)
+    d(_('Inspector'), 'inspector', Qt.DockWidgetArea.RightDockWidgetArea, Qt.DockWidgetArea.AllDockWidgetAreas)
+    d(_('Highlights'), 'highlights', Qt.DockWidgetArea.RightDockWidgetArea)
     return ans
 
 
@@ -90,29 +90,30 @@ class EbookViewer(MainWindow):
         self.shutting_down = self.close_forced = self.shutdown_done = False
         self.force_reload = force_reload
         connect_lambda(self.book_preparation_started, self, lambda self: self.loading_overlay(_(
-            'Preparing book for first read, please wait')), type=Qt.QueuedConnection)
+            'Preparing book for first read, please wait')), type=Qt.ConnectionType.QueuedConnection)
         self.maximized_at_last_fullscreen = False
         self.save_pos_timer = t = QTimer(self)
-        t.setSingleShot(True), t.setInterval(3000), t.setTimerType(Qt.VeryCoarseTimer)
+        t.setSingleShot(True), t.setInterval(3000), t.setTimerType(Qt.TimerType.VeryCoarseTimer)
         connect_lambda(t.timeout, self, lambda self: self.save_annotations(in_book_file=False))
         self.pending_open_at = open_at
         self.base_window_title = _('E-book viewer')
-        self.setDockOptions(MainWindow.AnimatedDocks | MainWindow.AllowTabbedDocks | MainWindow.AllowNestedDocks)
+        self.setDockOptions(QMainWindow.DockOption.AnimatedDocks | QMainWindow.DockOption.AllowTabbedDocks | QMainWindow.DockOption.AllowNestedDocks)
         self.setWindowTitle(self.base_window_title)
         self.in_full_screen_mode = None
         self.image_popup = ImagePopup(self)
         self.actions_toolbar = at = ActionsToolBar(self)
         at.open_book_at_path.connect(self.ask_for_open)
-        self.addToolBar(Qt.LeftToolBarArea, at)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, at)
         try:
             os.makedirs(annotations_dir)
         except EnvironmentError:
             pass
         self.current_book_data = {}
-        self.book_prepared.connect(self.load_finished, type=Qt.QueuedConnection)
+        get_current_book_data(self.current_book_data)
+        self.book_prepared.connect(self.load_finished, type=Qt.ConnectionType.QueuedConnection)
         self.dock_defs = dock_defs()
 
-        def create_dock(title, name, area, areas=Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea):
+        def create_dock(title, name, area, areas=Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea):
             ans = QDockWidget(title, self)
             ans.setObjectName(name)
             self.addDockWidget(area, ans)
@@ -166,6 +167,7 @@ class EbookViewer(MainWindow):
         self.web_view.find_next.connect(self.search_widget.find_next_requested)
         self.search_widget.show_search_result.connect(self.web_view.show_search_result)
         self.web_view.search_result_not_found.connect(self.search_widget.search_result_not_found)
+        self.web_view.search_result_discovered.connect(self.search_widget.search_result_discovered)
         self.web_view.toggle_bookmarks.connect(self.toggle_bookmarks)
         self.web_view.toggle_highlights.connect(self.toggle_highlights)
         self.web_view.new_bookmark.connect(self.bookmarks_widget.create_new_bookmark)
@@ -174,21 +176,23 @@ class EbookViewer(MainWindow):
         self.web_view.quit.connect(self.quit)
         self.web_view.update_current_toc_nodes.connect(self.toc.update_current_toc_nodes)
         self.web_view.toggle_full_screen.connect(self.toggle_full_screen)
-        self.web_view.ask_for_open.connect(self.ask_for_open, type=Qt.QueuedConnection)
-        self.web_view.selection_changed.connect(self.lookup_widget.selected_text_changed, type=Qt.QueuedConnection)
-        self.web_view.selection_changed.connect(self.highlights_widget.selected_text_changed, type=Qt.QueuedConnection)
-        self.web_view.view_image.connect(self.view_image, type=Qt.QueuedConnection)
-        self.web_view.copy_image.connect(self.copy_image, type=Qt.QueuedConnection)
+        self.web_view.ask_for_open.connect(self.ask_for_open, type=Qt.ConnectionType.QueuedConnection)
+        self.web_view.selection_changed.connect(self.lookup_widget.selected_text_changed, type=Qt.ConnectionType.QueuedConnection)
+        self.web_view.selection_changed.connect(self.highlights_widget.selected_text_changed, type=Qt.ConnectionType.QueuedConnection)
+        self.web_view.view_image.connect(self.view_image, type=Qt.ConnectionType.QueuedConnection)
+        self.web_view.copy_image.connect(self.copy_image, type=Qt.ConnectionType.QueuedConnection)
         self.web_view.show_loading_message.connect(self.show_loading_message)
         self.web_view.show_error.connect(self.show_error)
-        self.web_view.print_book.connect(self.print_book, type=Qt.QueuedConnection)
-        self.web_view.reset_interface.connect(self.reset_interface, type=Qt.QueuedConnection)
-        self.web_view.quit.connect(self.quit, type=Qt.QueuedConnection)
+        self.web_view.print_book.connect(self.print_book, type=Qt.ConnectionType.QueuedConnection)
+        self.web_view.reset_interface.connect(self.reset_interface, type=Qt.ConnectionType.QueuedConnection)
+        self.web_view.quit.connect(self.quit, type=Qt.ConnectionType.QueuedConnection)
         self.web_view.shortcuts_changed.connect(self.shortcuts_changed)
         self.web_view.scrollbar_context_menu.connect(self.scrollbar_context_menu)
         self.web_view.close_prep_finished.connect(self.close_prep_finished)
         self.web_view.highlights_changed.connect(self.highlights_changed)
+        self.web_view.edit_book.connect(self.edit_book)
         self.actions_toolbar.initialize(self.web_view, self.search_dock.toggleViewAction())
+        at.update_action_state(False)
         self.setCentralWidget(self.web_view)
         self.loading_overlay = LoadingOverlay(self)
         self.restore_state()
@@ -196,6 +200,7 @@ class EbookViewer(MainWindow):
         self.dock_visibility_changed()
         self.highlights_widget.request_highlight_action.connect(self.web_view.highlight_action)
         self.highlights_widget.web_action.connect(self.web_view.generic_action)
+        self.highlights_widget.notes_edited_signal.connect(self.notes_edited)
         if continue_reading:
             self.continue_reading()
         self.setup_mouse_auto_hide()
@@ -277,7 +282,7 @@ class EbookViewer(MainWindow):
                 self.showNormal()
 
     def changeEvent(self, ev):
-        if ev.type() == QEvent.WindowStateChange:
+        if ev.type() == QEvent.Type.WindowStateChange:
             in_full_screen_mode = self.isFullScreen()
             if self.in_full_screen_mode is None or self.in_full_screen_mode != in_full_screen_mode:
                 self.in_full_screen_mode = in_full_screen_mode
@@ -286,6 +291,7 @@ class EbookViewer(MainWindow):
 
     def toggle_full_screen(self):
         self.set_full_screen(not self.isFullScreen())
+
     # }}}
 
     # Docks (ToC, Bookmarks, Lookup, etc.) {{{
@@ -295,7 +301,10 @@ class EbookViewer(MainWindow):
         self.inspector_dock.setVisible(not visible)
 
     def toggle_toc(self):
-        self.toc_dock.setVisible(not self.toc_dock.isVisible())
+        is_visible = self.toc_dock.isVisible()
+        self.toc_dock.setVisible(not is_visible)
+        if not is_visible:
+            self.toc.scroll_to_current_toc_node()
 
     def show_search(self, text, trigger=False):
         self.search_dock.setVisible(True)
@@ -321,21 +330,21 @@ class EbookViewer(MainWindow):
         if name:
             self.web_view.get_current_cfi(self.search_widget.set_anchor_cfi)
             self.search_widget.start_search(search_query, name)
-            self.web_view.setFocus(Qt.OtherFocusReason)
+            self.web_view.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def toggle_bookmarks(self):
         is_visible = self.bookmarks_dock.isVisible()
         self.bookmarks_dock.setVisible(not is_visible)
         if is_visible:
-            self.web_view.setFocus(Qt.OtherFocusReason)
+            self.web_view.setFocus(Qt.FocusReason.OtherFocusReason)
         else:
-            self.bookmarks_widget.bookmarks_list.setFocus(Qt.OtherFocusReason)
+            self.bookmarks_widget.bookmarks_list.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def toggle_highlights(self):
         is_visible = self.highlights_dock.isVisible()
         self.highlights_dock.setVisible(not is_visible)
         if is_visible:
-            self.web_view.setFocus(Qt.OtherFocusReason)
+            self.web_view.setFocus(Qt.FocusReason.OtherFocusReason)
         else:
             self.highlights_widget.focus()
 
@@ -357,11 +366,11 @@ class EbookViewer(MainWindow):
         # annotations will be saved in book file on exit
         self.save_annotations(in_book_file=False)
 
-    def goto_cfi(self, cfi):
-        self.web_view.goto_cfi(cfi)
+    def goto_cfi(self, cfi, add_to_history=False):
+        self.web_view.goto_cfi(cfi, add_to_history=add_to_history)
 
     def bookmark_activated(self, cfi):
-        self.goto_cfi(cfi)
+        self.goto_cfi(cfi, add_to_history=True)
 
     def view_image(self, name):
         path = get_path_for_name(name)
@@ -404,8 +413,13 @@ class EbookViewer(MainWindow):
     def show_loading_message(self, msg):
         if msg:
             self.loading_overlay(msg)
+            self.actions_toolbar.update_action_state(False)
         else:
+            if not hasattr(self, 'initial_loading_performace_reported'):
+                performance_monitor('loading finished')
+                self.initial_loading_performace_reported = True
             self.loading_overlay.hide()
+            self.actions_toolbar.update_action_state(True)
 
     def show_error(self, title, msg, details):
         self.loading_overlay.hide()
@@ -417,7 +431,7 @@ class EbookViewer(MainWindow):
 
     @property
     def dock_widgets(self):
-        return self.findChildren(QDockWidget, options=Qt.FindDirectChildrenOnly)
+        return self.findChildren(QDockWidget, options=Qt.FindChildOption.FindDirectChildrenOnly)
 
     def reset_interface(self):
         for dock in self.dock_widgets:
@@ -430,7 +444,7 @@ class EbookViewer(MainWindow):
         for toolbar in self.findChildren(QToolBar):
             toolbar.setVisible(False)
             self.removeToolBar(toolbar)
-            self.addToolBar(Qt.LeftToolBarArea, toolbar)
+            self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, toolbar)
 
     def ask_for_open(self, path=None):
         if path is None:
@@ -450,6 +464,10 @@ class EbookViewer(MainWindow):
             self.load_ebook(entry['pathtoebook'])
 
     def load_ebook(self, pathtoebook, open_at=None, reload_book=False):
+        if '.' not in os.path.basename(pathtoebook):
+            pathtoebook = os.path.abspath(os.path.realpath(pathtoebook))
+        performance_monitor('Load of book started', reset=True)
+        self.actions_toolbar.update_action_state(False)
         self.web_view.show_home_page_on_ready = False
         if open_at:
             self.pending_open_at = open_at
@@ -457,6 +475,7 @@ class EbookViewer(MainWindow):
         self.loading_overlay(_('Loading book, please wait'))
         self.save_annotations()
         self.current_book_data = {}
+        get_current_book_data(self.current_book_data)
         self.search_widget.clear_searches()
         t = Thread(name='LoadBook', target=self._load_ebook_worker, args=(pathtoebook, open_at, reload_book or self.force_reload))
         t.daemon = True
@@ -467,8 +486,6 @@ class EbookViewer(MainWindow):
             self.load_ebook(self.current_book_data['pathtoebook'], reload_book=True)
 
     def _load_ebook_worker(self, pathtoebook, open_at, reload_book):
-        if DEBUG:
-            start_time = monotonic()
         try:
             ans = prepare_book(pathtoebook, force=reload_book, prepare_notify=self.prepare_notify)
         except WorkerError as e:
@@ -477,8 +494,7 @@ class EbookViewer(MainWindow):
             import traceback
             self.book_prepared.emit(False, {'exception': e, 'tb': traceback.format_exc(), 'pathtoebook': pathtoebook})
         else:
-            if DEBUG:
-                print('Book prepared in {:.2f} seconds'.format(monotonic() - start_time))
+            performance_monitor('prepared emitted')
             self.book_prepared.emit(True, {'base': ans, 'pathtoebook': pathtoebook, 'open_at': open_at, 'reloaded': reload_book})
 
     def prepare_notify(self):
@@ -492,6 +508,7 @@ class EbookViewer(MainWindow):
         open_at, self.pending_open_at = self.pending_open_at, None
         self.web_view.clear_caches()
         if not ok:
+            self.actions_toolbar.update_action_state(False)
             self.setWindowTitle(self.base_window_title)
             tb = as_unicode(data['tb'].strip(), errors='replace')
             tb = re.split(r'^calibre\.gui2\.viewer\.convert_book\.ConversionFailure:\s*', tb, maxsplit=1, flags=re.M)[-1]
@@ -513,6 +530,7 @@ class EbookViewer(MainWindow):
             self.load_ebook(data['pathtoebook'], open_at=data['open_at'], reload_book=True)
             return
         self.current_book_data = data
+        get_current_book_data(self.current_book_data)
         self.current_book_data['annotations_map'] = defaultdict(list)
         self.current_book_data['annotations_path_key'] = path_key(data['pathtoebook']) + '.json'
         self.load_book_data(cbd)
@@ -538,6 +556,7 @@ class EbookViewer(MainWindow):
         highlights = self.current_book_data['annotations_map']['highlight']
         self.highlights_widget.load(highlights)
         self.web_view.start_book_load(initial_position=initial_position, highlights=highlights, current_book_data=self.current_book_data)
+        performance_monitor('webview loading requested')
 
     def load_book_data(self, calibre_book_data=None):
         self.current_book_data['book_library_details'] = get_book_library_details(self.current_book_data['pathtoebook'])
@@ -633,6 +652,46 @@ class EbookViewer(MainWindow):
         self.highlights_widget.refresh(highlights)
         self.save_annotations()
 
+    def notes_edited(self, uuid, notes):
+        for h in self.current_book_data['annotations_map']['highlight']:
+            if h.get('uuid') == uuid:
+                h['notes'] = notes
+                h['timestamp'] = utcnow().isoformat()
+                break
+        else:
+            return
+        self.save_annotations()
+
+    def edit_book(self, file_name, progress_frac, selected_text):
+        import subprocess
+
+        from calibre.ebooks.oeb.polish.main import SUPPORTED
+        from calibre.utils.ipc.launch import exe_path, macos_edit_book_bundle_path
+        try:
+            path = set_book_path.pathtoebook
+        except AttributeError:
+            return error_dialog(self, _('Cannot edit book'), _(
+                'No book is currently open'), show=True)
+        fmt = path.rpartition('.')[-1].upper().replace('ORIGINAL_', '')
+        if fmt not in SUPPORTED:
+            return error_dialog(self, _('Cannot edit book'), _(
+                'The book must be in the %s formats to edit.'
+                '\n\nFirst convert the book to one of these formats.'
+            ) % (_(' or ').join(SUPPORTED)), show=True)
+        exe = 'ebook-edit'
+        if ismacos:
+            exe = os.path.join(macos_edit_book_bundle_path(), exe)
+        else:
+            exe = exe_path(exe)
+        cmd = [exe]
+        if selected_text:
+            cmd += ['--select-text', selected_text]
+        from calibre.gui2.tweak_book.widgets import BusyCursor
+        with sanitize_env_vars():
+            subprocess.Popen(cmd + [path, file_name])
+            with BusyCursor():
+                time.sleep(2)
+
     def save_state(self):
         with vprefs:
             vprefs['main_window_state'] = bytearray(self.saveState(self.MAIN_WINDOW_STATE_VERSION))
@@ -648,6 +707,10 @@ class EbookViewer(MainWindow):
         if state:
             self.restoreState(state, self.MAIN_WINDOW_STATE_VERSION)
             self.inspector_dock.setVisible(False)
+            if not get_session_pref('restore_docks', True):
+                for dock_def in self.dock_defs.values():
+                    d = getattr(self, '{}_dock'.format(dock_def.name.partition('-')[0]))
+                    d.setVisible(False)
 
     def quit(self):
         self.close()
@@ -674,6 +737,7 @@ class EbookViewer(MainWindow):
             return
         self.shutting_down = True
         self.search_widget.shutdown()
+        self.web_view.shutdown()
         try:
             self.save_state()
             self.save_annotations()
@@ -698,15 +762,20 @@ class EbookViewer(MainWindow):
         t.start()
 
     def eventFilter(self, obj, ev):
-        if ev.type() == ev.MouseMove:
+        et = ev.type()
+        if et == QEvent.Type.MouseMove:
             if self.cursor_hidden:
                 self.cursor_hidden = False
                 QApplication.instance().restoreOverrideCursor()
             self.hide_cursor_timer.start()
+        elif et == QEvent.Type.FocusIn:
+            if iswindows and obj and obj.objectName() == 'EbookViewerClassWindow' and self.isFullScreen():
+                # See https://bugs.launchpad.net/calibre/+bug/1918591
+                self.web_view.repair_after_fullscreen_switch()
         return False
 
     def hide_cursor(self):
         if get_session_pref('auto_hide_mouse', True):
             self.cursor_hidden = True
-            QApplication.instance().setOverrideCursor(Qt.BlankCursor)
+            QApplication.instance().setOverrideCursor(Qt.CursorShape.BlankCursor)
     # }}}
