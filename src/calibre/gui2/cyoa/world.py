@@ -55,8 +55,10 @@ from calibre.ai.cyoa import (
 from calibre.customize import AIProviderPlugin
 from calibre.gui2 import error_dialog, question_dialog
 from calibre.gui2.cyoa import data
+from calibre.gui2.cyoa.saves import LoadGameDialog, has_saved_games
 from calibre.gui2.cyoa.text_display import TextDisplay
 from calibre.gui2.progress_indicator import WaitStack
+from calibre.gui2.widgets2 import Dialog
 from calibre.utils.img import image_from_data, image_to_data, resize_to_fit
 from calibre.utils.localization import _, pgettext
 
@@ -730,6 +732,7 @@ class CreateWorldWidget(QWidget):
     result_received = pyqtSignal(int, object)
     # (GeneratedWorld, index in its characters of the character to play as, brief, StoryStyle, portrait of that character or None)
     game_start_requested = pyqtSignal(object, int, str, object, object)
+    saved_game_load_requested = pyqtSignal(str)  # the name of the saved game to resume instead of creating a new world
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -802,8 +805,15 @@ class CreateWorldWidget(QWidget):
 
         h.addLayout(rs, stretch=2)
         bl.addLayout(h)
+        lh = QHBoxLayout()
+        self.load_game_button = lgb = QPushButton(QIcon.ic('document_open.png'), _('&Load saved game'), bp)
+        lgb.setToolTip('<p>' + _('Resume a game you saved earlier instead of starting a new one in a new world'))
+        lgb.clicked.connect(self.load_saved_game)
+        lh.addWidget(lgb), lh.addStretch()
+        bl.addLayout(lh)
         self.populate_descriptions_list()
         self.populate_saved_worlds_list()
+        self.update_load_game_button()
 
         self.wait_stack = ws = WaitStack(_('Creating your world, this can take a while…'), after=bp, parent=self, size=128)
         ws.stop()
@@ -833,6 +843,16 @@ class CreateWorldWidget(QWidget):
         has_saved = bool(saved)
         self.saved_worlds_label.setVisible(has_saved)
         self.saved_worlds_list.setVisible(has_saved)
+
+    def update_load_game_button(self) -> None:
+        # With no saved games there is nothing for the dialog to show, so the
+        # button would be a dead end.
+        self.load_game_button.setVisible(has_saved_games())
+
+    def load_saved_game(self) -> None:
+        d = LoadGameDialog(self)
+        if d.exec() == Dialog.DialogCode.Accepted and d.save_name:
+            self.saved_game_load_requested.emit(d.save_name)
 
     def saved_world_for_item(self, item: QListWidgetItem) -> tuple[dict[str, object], GeneratedWorld] | None:
         idx = item.data(SAVED_WORLD_ROLE)
@@ -904,6 +924,7 @@ class CreateWorldWidget(QWidget):
         self.world_edit.cancel_portrait_generation()
         self.wait_stack.stop()
         self.populate_saved_worlds_list()
+        self.update_load_game_button()
         self.right_stack.setCurrentWidget(self.generate_page)
         self.stack.setCurrentWidget(self.wait_stack)
 

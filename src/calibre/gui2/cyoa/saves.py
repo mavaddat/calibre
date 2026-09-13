@@ -18,6 +18,28 @@ def fmt_timestamp(ts: float) -> str:
     return strftime('%d %b %Y, %H:%M', localtime(ts))
 
 
+def save_entry_text(e: data.SavedGame) -> str:
+    # A game in the saves folder lives in a folder named after the name the
+    # player chose when saving it, so that, and not the title of the world the
+    # game happens to be set in, is what identifies the save to them.
+    turns = ngettext('{} turn', '{} turns', e.num_turns).format(e.num_turns)
+    text = f'{e.game_id} — {turns} — {fmt_timestamp(e.updated)}'
+    if e.title and e.title != e.game_id:
+        text += f' ({e.title})'
+    return text
+
+
+def has_saved_games() -> bool:
+    return bool(data.list_games(base=data.saves_dir()))
+
+
+def populate_saves_list(sl: QListWidget) -> None:
+    sl.clear()
+    for e in data.list_games(base=data.saves_dir()):
+        i = QListWidgetItem(save_entry_text(e), sl)
+        i.setData(SAVE_NAME_ROLE, e.game_id)
+
+
 class ManageSavesDialog(Dialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(_('Manage saved games'), 'cyoa-manage-saves', parent, default_buttons=QDialogButtonBox.StandardButton.Close)
@@ -36,14 +58,7 @@ class ManageSavesDialog(Dialog):
         self.re_populate()
 
     def re_populate(self) -> None:
-        self.saves_list.clear()
-        for e in data.list_games(base=data.saves_dir()):
-            turns = ngettext('{} turn', '{} turns', e.num_turns).format(e.num_turns)
-            text = f'{e.title} — {turns} — {fmt_timestamp(e.updated)}'
-            if e.game_id != e.title:
-                text += f' ({e.game_id})'
-            i = QListWidgetItem(text, self.saves_list)
-            i.setData(SAVE_NAME_ROLE, e.game_id)
+        populate_saves_list(self.saves_list)
 
     def delete_selected(self) -> None:
         item = self.saves_list.currentItem()
@@ -109,11 +124,7 @@ class LoadGameDialog(Dialog):
         self.re_populate()
 
     def re_populate(self) -> None:
-        self.saves_list.clear()
-        for e in data.list_games(base=data.saves_dir()):
-            turns = ngettext('{} turn', '{} turns', e.num_turns).format(e.num_turns)
-            i = QListWidgetItem(f'{e.title} — {turns} — {fmt_timestamp(e.updated)}', self.saves_list)
-            i.setData(SAVE_NAME_ROLE, e.game_id)
+        populate_saves_list(self.saves_list)
         self.saves_list.setCurrentRow(0)
 
     def manage_saves(self) -> None:

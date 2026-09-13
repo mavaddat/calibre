@@ -32,6 +32,7 @@ class CYOAMainWindow(MainWindow):
         s.addWidget(w)
         self.world = cw = CreateWorldWidget(self)
         cw.game_start_requested.connect(self.start_new_game)
+        cw.saved_game_load_requested.connect(self.resume_saved_game)
         s.addWidget(cw)
         self.game = g = GameWidget(self)
         g.game_abandoned.connect(self.abandon_game)
@@ -69,6 +70,20 @@ class CYOAMainWindow(MainWindow):
         data.save_game(game_id, state, portraits=portraits)
         data.set_current_game(game_id)
         self.game.load_game(game_id, state, portraits=portraits)
+        self.stack.setCurrentWidget(self.game)
+
+    def resume_saved_game(self, save_name: str) -> None:
+        # The save itself is left untouched: it is copied into a new current
+        # game, so that playing on from it does not overwrite it.
+        try:
+            state, images, portraits = data.load_game(save_name, base=data.saves_dir())
+        except Exception as e:
+            error_dialog(self, _('Failed to load game'), _('Failed to load the saved game "{0}": {1}').format(save_name, e), show=True)
+            return
+        game_id = data.new_game_id()
+        data.save_game(game_id, state, images, portraits=portraits)
+        data.set_current_game(game_id)
+        self.game.load_game(game_id, state, images, portraits, save_name=save_name)
         self.stack.setCurrentWidget(self.game)
 
     def abandon_game(self) -> None:

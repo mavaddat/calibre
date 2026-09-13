@@ -392,8 +392,16 @@ class GameWidget(QWidget):
             data.save_game_splitter_state(bytes(self.splitter.saveState()))
 
     def load_game(
-        self, game_id: str, state: GameState, images: dict[int, data.SceneImage] | None = None, portraits: dict[str, dict[str, str]] | None = None
+        self,
+        game_id: str,
+        state: GameState,
+        images: dict[int, data.SceneImage] | None = None,
+        portraits: dict[str, dict[str, str]] | None = None,
+        save_name: str = '',
     ) -> None:
+        # save_name is the name this game was last saved under, if any, so
+        # that saving it again defaults to that name rather than the title of
+        # the world it is set in.
         self.game_id = game_id
         self.state = state
         self.images = dict(images or {})
@@ -401,7 +409,7 @@ class GameWidget(QWidget):
         self.portraits = dict(portraits or {})
         self.images_enabled = data.images_enabled()
         self.session_cost = 0.0
-        self.last_save_name = data.save_name_for_title(state.world.title)
+        self.last_save_name = save_name or data.save_name_for_title(state.world.title)
         self.cancel_pending_ai_calls()
         self.images_check.setChecked(self.images_enabled)
         self.apply_images_enabled()
